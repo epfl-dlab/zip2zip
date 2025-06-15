@@ -1,0 +1,43 @@
+repos:
+-   repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v3.4.0  # Use the ref you want to point at
+    hooks:
+    -   id: trailing-whitespace # Trims trailing whitespace.
+    -   id: end-of-file-fixer # Makes sure files end in a newline and only a newline.
+    -   id: check-yaml # Checks yaml files for syntax validity
+    -   id: check-added-large-files   # Checks for large files being added to git, > 10MB
+        args: ['--maxkb=8000']
+        exclude: "notebooks"
+    -   id: check-case-conflict # Checks for files whose names differ only in case
+    -   id: check-merge-conflict # Checks for files that contain merge conflict strings.
+    -   id: debug-statements # Prevents the accidental commit of breakpoint(), pdb.set_trace(), etc.
+    -   id: check-ast # Simply check whether files parse as valid python.
+    -   id: check-docstring-first # Checks for a common error of placing code before the docstring.
+    -   id: check-executables-have-shebangs # Checks that executable files have a shebang.
+    -   id: detect-private-key # Detects the presence of private keys.
+    -   id: detect-aws-credentials
+        args:
+          - --allow-missing-credentials
+-   repo: https://github.com/ambv/black # automatic format code style
+    rev: 22.3.0
+    hooks:
+    -   id: black
+
+-   repo: local
+    hooks:
+        -   id: pytest
+            name: pytest
+            entry: python -m pytest tests/
+            language: system
+            types: [ python ]
+            pass_filenames: false
+            stages: [ commit ]
+
+
+# -   repo: https://github.com/pre-commit/mirrors-mypy
+#     rev: ''  # Use the sha / tag you want to point at
+#     hooks:
+#     -   id: mypy
+#         args: [--strict, --ignore-missing-imports]
+#         additional_dependencies: ['mypy']
+#         types: [python]
