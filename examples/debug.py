@@ -3,7 +3,9 @@ import torch
 from zip2zip.utils import setup_seed
 from zip2zip.model import Zip2ZipModel
 from zip2zip.tokenizer import Zip2ZipTokenizer
+from zip2zip.logging_utils import configure_logging
 
+configure_logging()
 
 setup_seed()
 torch.set_float32_matmul_precision("high")
@@ -68,7 +70,7 @@ input_codebooks = [codebook.to_decoding_dict() for codebook in input_codebooks]
 outputs = model.generate(
     **inputs,
     do_sample=False,
-    max_new_tokens=512,
+    max_new_tokens=128,
     use_cache=True,
 )
 

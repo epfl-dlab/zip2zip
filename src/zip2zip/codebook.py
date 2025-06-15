@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import torch
+import logging
 from typing import List, Optional
 from transformers import AutoTokenizer
 from zip2zip_compression import Codebook, CodebookManager as RustCodebookManager
@@ -8,6 +9,8 @@ from zip2zip_compression import CodebookConfig
 
 from zip2zip.config import Zip2ZipConfig
 from zip2zip.nn.encoders.base import BaseEncoder
+
+logger = logging.getLogger(__name__)
 
 
 class CodebookManager:
@@ -85,7 +88,7 @@ class CodebookManager:
         updates, updates_indices = self.internal_codebook_manager.update_codebooks(
             ids.tolist()
         )
-        print(f"\n updates_indices: {updates_indices}")
+        logger.debug(f"\n updates to codebooks: {updates}")
 
         self.updates = torch.tensor(
             updates,
