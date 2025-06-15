@@ -57,13 +57,6 @@ class Zip2ZipTokenizer(PushToHubMixin):
     def __call__(self, *args, **kwargs) -> BatchEncoding:
         return self.tokenizer(*args, **kwargs)
 
-    def get_disabled_ids(self) -> List[int]:
-        return self.disabled_ids
-
-    def set_disabled_ids(self, disabled_ids: List[int]) -> None:
-        # TODO: turn this into a set
-        self.disabled_ids.extend(disabled_ids)
-
     def _lzw_encode(self, token_ids: List[int]) -> Tuple[List[int], Codebook]:
         out, attention_mask, codebook = self.compressor.encode(token_ids)
         return out, codebook

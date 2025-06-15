@@ -18,24 +18,10 @@ model = Zip2ZipModel.from_pretrained(
     torch_dtype=torch.bfloat16,
 ).eval()
 
-disabled_ids = {
-    0,
-    1,
-    2,
-    32000,
-    32001,
-    32002,
-    32003,
-    32004,
-    32005,
-    32006,
-    32007,
-    32008,
-    32009,
-    32010,
-}
-
 tokenizer = Zip2ZipTokenizer.from_pretrained(model_name)
+
+disabled_ids = list(tokenizer.get_added_vocab().values())
+
 
 prompt1 = tokenizer.apply_chat_template(
     [{"role": "user", "content": "Write a MultiHeadAttention layer in PyTorch"}],
@@ -46,14 +32,19 @@ prompt2 = tokenizer.apply_chat_template(
     [
         {
             "role": "user",
-            "content": "What is the capital of France and what is the capital of Germany?",
+            "content": "Please explain what is messenger ribonucleic acid.",
         }
     ],
     tokenize=False,
     add_generation_prompt=True,
 )
 prompt3 = tokenizer.apply_chat_template(
-    [{"role": "user", "content": "What is your name?"}],
+    [
+        {
+            "role": "user",
+            "content": "Explique-moi l’histoire de la Révolution française.",
+        }
+    ],
     tokenize=False,
     add_generation_prompt=True,
 )
@@ -70,7 +61,7 @@ input_codebooks = [codebook.to_decoding_dict() for codebook in input_codebooks]
 outputs = model.generate(
     **inputs,
     do_sample=False,
-    max_new_tokens=128,
+    max_new_tokens=512,
     use_cache=True,
 )
 

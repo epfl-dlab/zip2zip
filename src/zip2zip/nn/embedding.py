@@ -45,7 +45,6 @@ class HyperEmbedding(nn.Embedding):
         ).unsqueeze(-1).expand_as(input) * hyper_embedding_weight.size(1)
 
         hyper_input_ids += batch_offsets
-
         base_embedding = super().forward(base_input_ids) * base_token_mask.unsqueeze(-1)
         hyper_embedding = F.embedding(
             hyper_input_ids, hyper_embedding_weight.view(-1, self.embedding_dim)
