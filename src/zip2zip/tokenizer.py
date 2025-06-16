@@ -62,7 +62,6 @@ class Zip2ZipTokenizer(PushToHubMixin):
         return out, codebook
 
     def _batch_encode_plus(self, *args, **kwargs) -> BatchEncoding:
-        # TODO: we don't support padding here
         return_tensors = kwargs.pop("return_tensors", None)
         padding = kwargs.pop("padding_strategy").value
         truncation = kwargs.pop("truncation_strategy").value
@@ -151,10 +150,10 @@ class Zip2ZipTokenizer(PushToHubMixin):
         color_scheme: str = "finegrained",
     ) -> List[str]:
         if isinstance(codebook, Codebook):
-            decompress_maps = [codebook.to_decoding_dict()]
+            decompress_maps = [codebook.to_dict()]
             sequences = [sequences]
         else:
-            decompress_maps = [codebook.to_decoding_dict() for codebook in codebook]
+            decompress_maps = [codebook.to_dict() for codebook in codebook]
 
         # convert tensor to list
         if isinstance(sequences, torch.Tensor):

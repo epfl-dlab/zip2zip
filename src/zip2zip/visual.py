@@ -16,9 +16,6 @@ class ColoredToken:
         return f"{self.color}{self.token_ids}{self.END_COLOR}"
 
 
-# TODO
-
-
 def colorise_lzwtokens(
     lzw_token_ids: List[int],
     codebook: Dict[int, List[int]],

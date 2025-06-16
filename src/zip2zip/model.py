@@ -40,6 +40,8 @@ class Zip2ZipModel(PushToHubMixin, nn.Module):
                 config.base_model_name_or_path, **kwargs
             )
 
+        # TODO, needs to create peft model here, this would probably require to expand the Zip2ZipConfig class
+
         self.base_model = base_model
 
         self.dtype = base_model.dtype
@@ -48,9 +50,11 @@ class Zip2ZipModel(PushToHubMixin, nn.Module):
         self.codebook_manager = CodebookManager.from_config(
             config, self.dtype, self.device
         )
-
         self.input_encoder, self.output_encoder = self.get_encoders()
         self.set_hyper_modules()
+        logger.warning(
+            "[Zip2Zip] HyperEncoder and HyperEmbedding were initialized without pretrained weights — using random initialization."
+        )
 
     def forward(self, *args, **kwargs) -> torch.Tensor:
         if not self.codebook_manager.is_initialized:
@@ -93,7 +97,7 @@ class Zip2ZipModel(PushToHubMixin, nn.Module):
             ).to(self.device, self.dtype)
             return input_encoder, output_encoder
 
-    def load_encoders(
+    def load_pretrained_hyper_encoders(
         self,
         pretrained_model_name_or_path: str,
         subfolder: Optional[str] = None,
@@ -197,13 +201,9 @@ class Zip2ZipModel(PushToHubMixin, nn.Module):
         cls,
         pretrained_model_name_or_path: str,
         base_model: Optional[PreTrainedModel] = None,
-        subfolder: Optional[str] = None,
-        peft_subfolder: Optional[str] = None,
         **kwargs,
     ) -> Zip2ZipModel:
-        config = Zip2ZipConfig.from_pretrained(
-            pretrained_model_name_or_path, subfolder, **kwargs
-        )
+        config = Zip2ZipConfig.from_pretrained(pretrained_model_name_or_path, **kwargs)
 
         if base_model is None:
             base_model = AutoModelForCausalLM.from_pretrained(
@@ -215,12 +215,11 @@ class Zip2ZipModel(PushToHubMixin, nn.Module):
             base_model = PeftModel.from_pretrained(
                 base_model,
                 pretrained_model_name_or_path,
-                subfolder=peft_subfolder,
                 **kwargs,
             )
         except (OSError, FileNotFoundError, ValueError) as e:
             logger.info("[Zip2Zip] No PEFT adapter found — proceeding with base model.")
 
         model = cls(config, base_model, **kwargs)
-        model.load_encoders(pretrained_model_name_or_path, subfolder, **kwargs)
+        model.load_pretrained_hyper_encoders(pretrained_model_name_or_path, **kwargs)
         return model

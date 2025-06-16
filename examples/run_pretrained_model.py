@@ -1,6 +1,6 @@
 import torch
 
-from zip2zip.utils import setup_seed
+from zip2zip.utils import setup_seed, PLATFORM_BEST_DTYPE
 from zip2zip.model import Zip2ZipModel
 from zip2zip.tokenizer import Zip2ZipTokenizer
 from zip2zip.logging_utils import configure_logging
@@ -10,12 +10,13 @@ configure_logging()
 setup_seed()
 torch.set_float32_matmul_precision("high")
 
-model_name = "Saibo-creator/zip2zip-Phi-3.5-mini-instruct-v0.1"
+model_name = "epfl-dlab/zip2zip-Phi-3.5-mini-instruct-v0.1"
+model_name = "epfl-dlab/zip2zip-Llama-3.1-8B-Instruct-v0.1"
 
 model = Zip2ZipModel.from_pretrained(
     model_name,
     device_map="cuda",
-    torch_dtype=torch.bfloat16,
+    torch_dtype=PLATFORM_BEST_DTYPE,
 ).eval()
 
 tokenizer = Zip2ZipTokenizer.from_pretrained(model_name)
@@ -56,16 +57,15 @@ inputs = tokenizer(
 
 input_codebooks = inputs.pop("codebooks")
 
-input_codebooks = [codebook.to_decoding_dict() for codebook in input_codebooks]
+input_codebooks = [codebook.to_dict() for codebook in input_codebooks]
+
 
 outputs = model.generate(
     **inputs,
     do_sample=False,
-    max_new_tokens=512,
+    max_new_tokens=128,
     use_cache=True,
 )
-
-print(f"outputs: {outputs}")
 
 
 print(
@@ -74,57 +74,18 @@ print(
 
 # codebooks = [state.codebook for state in model.codebook_manager.internal_codebook_manager.states]
 output_codebooks = model.codebook_manager.internal_codebook_manager.get_codebooks()
-readable_codebooks = [codebook.to_decoding_dict() for codebook in output_codebooks]
+readable_codebooks = [codebook.to_dict() for codebook in output_codebooks]
 
 print(f"--decode with codebooks--")
 
-for text in tokenizer.batch_decode(outputs, codebooks=output_codebooks):
+for text in tokenizer.batch_decode(
+    outputs, codebooks=output_codebooks, skip_special_tokens=True
+):
     print(text)
     print("=" * 10)
-
-
-print("--fuzzy decode--")
-
-for text in tokenizer.batch_decode(outputs):
-    print(text)
-    print("=" * 10)
-
-
-print(f"output_codebooks: {sorted(readable_codebooks[0].items())}")
-
 
 for text in tokenizer.color_decode(
     outputs, output_codebooks, color_scheme="finegrained"
 ):
     print(text)
     print("=" * 10)
-
-exit()
-
-
-model.codebook_manager.internal_codebook_manager.reset()
-
-outputs_ids = outputs.tolist()
-
-(
-    updates,
-    updates_indices,
-) = model.codebook_manager.internal_codebook_manager.update_codebooks(outputs_ids)
-
-# offline_codebooks = [state.codebook for state in model.codebook_manager.internal_codebook_manager.states]
-offline_codebooks = model.codebook_manager.internal_codebook_manager.get_codebooks()
-offline_codebooks = [codebook.to_decoding_dict() for codebook in offline_codebooks]
-
-
-_base_ids = tokenizer._lzw_decode(outputs_ids[0], output_codebooks[0])
-
-canonical_ids, canonical_codebook = tokenizer._lzw_encode(_base_ids)
-
-print("--- canonical codebook ---")
-print(sorted(canonical_codebook.to_decoding_dict().items()))
-
-print("--- offline codebook ---")
-print(sorted(offline_codebooks[0].items()))
-
-print("--- online codebook ---")
-print(sorted(readable_codebooks[0].items()))

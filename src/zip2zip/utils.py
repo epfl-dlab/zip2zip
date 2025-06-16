@@ -5,6 +5,7 @@ import random
 import string
 import importlib
 from logging import getLogger
+import hashlib
 
 logger = getLogger(__name__)
 import numpy as np
@@ -504,3 +505,40 @@ def save_lm_eval_results_to_yaml(results: Dict[str, Any], filepath: str) -> None
         print(f"Successfully saved results to {filepath}")
     except Exception as e:
         print(f"Error saving YAML: {e}")
+
+
+# TODO: needs to polish
+def hash_module_bottom_up(model: torch.nn.Module) -> dict[str, str]:
+    """Recursively hash submodules bottom-up and return name → hash map."""
+    hash_map = {}
+
+    for name, module in reversed(list(model.named_modules())):
+        h = hashlib.sha256()
+        for child_name, child in module.named_children():
+            full_name = f"{name}.{child_name}" if name else child_name
+            if full_name in hash_map:
+                h.update(hash_map[full_name].encode())
+
+        for p in module.parameters(recurse=False):
+            h.update(p.detach().cpu().numpy().tobytes())
+
+        hash_map[name] = h.hexdigest()[:8]
+
+    return hash_map
+
+
+def print_model_hashes(model: torch.nn.Module, depth: int = 2):
+    """Print module structure and hashes up to the given depth, efficiently."""
+    hash_map = hash_module_bottom_up(model)
+
+    print("Module Hash Summary:\n")
+    for name, module in model.named_modules():
+        if name == "":
+            current_depth = 0
+        else:
+            current_depth = name.count(".") + 1
+        if current_depth > depth:
+            continue
+        print(
+            f"{name or '[root]':<40} | {module.__class__.__name__:<30} | hash={hash_map[name]}"
+        )

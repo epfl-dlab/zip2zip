@@ -40,7 +40,7 @@ class CodebookManager:
                 max_codebook_size=max_codebook_size,
                 max_subtokens=max_subtokens,
                 pad_token_id=pad_token_id,
-                disabled_ids=disabled_ids,
+                disabled_ids=set(disabled_ids) if disabled_ids else set(),
             ),
             algorithm=algorithm,
         )
@@ -154,4 +154,5 @@ class CodebookManager:
             dtype=dtype,
             device=device,
             pad_token_id=pad_token_id,
+            disabled_ids=config.compression.disabled_ids,
         )
