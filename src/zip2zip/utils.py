@@ -15,7 +15,6 @@ from dataclasses import asdict, is_dataclass
 from omegaconf import OmegaConf, DictConfig
 from transformers import PreTrainedModel
 from collections.abc import MutableMapping
-from torchao.float8.float8_linear import Float8Linear
 from torch.distributed import init_process_group
 from typing import (
     Callable,
@@ -456,28 +455,6 @@ def swap_linear_layers(
 
     post_order_traversal(root_module)
     return root_module
-
-
-def dequantize_float8_training(
-    model: nn.Module, dtype: torch.dtype, device: Union[str, torch.device]
-) -> nn.Module:
-    """
-    Converts `Float8Linear` modules in `model` to `torch.nn.Linear`.
-    """
-
-    def dequant_func(mod: Float8Linear) -> nn.Linear:
-        new_module = nn.Linear(
-            mod.in_features, mod.out_features, dtype=dtype, device=device
-        )
-        new_module.weight = mod.weight
-        new_module.bias = mod.bias
-        return new_module
-
-    return swap_linear_layers(
-        model,
-        Float8Linear,
-        dequant_func,
-    )
 
 
 def get_base_vocab_size(tokenizer) -> int:
