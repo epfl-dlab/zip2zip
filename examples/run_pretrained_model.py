@@ -10,7 +10,7 @@ configure_logging()
 setup_seed()
 torch.set_float32_matmul_precision("high")
 
-model_name = "epfl-dlab/zip2zip-Phi-3.5-mini-instruct-v0.1"
+# model_name = "epfl-dlab/zip2zip-Phi-3.5-mini-instruct-v0.1"
 model_name = "epfl-dlab/zip2zip-Llama-3.1-8B-Instruct-v0.1"
 
 model = Zip2ZipModel.from_pretrained(
@@ -55,11 +55,6 @@ inputs = tokenizer(
 ).to("cuda")
 
 
-input_codebooks = inputs.pop("codebooks")
-
-input_codebooks = [codebook.to_dict() for codebook in input_codebooks]
-
-
 outputs = model.generate(
     **inputs,
     do_sample=False,
@@ -78,14 +73,14 @@ readable_codebooks = [codebook.to_dict() for codebook in output_codebooks]
 
 print(f"--decode with codebooks--")
 
-for text in tokenizer.batch_decode(
-    outputs, codebooks=output_codebooks, skip_special_tokens=True
+codebooks = []
+for text_codebook_pairs in tokenizer.batch_decode(
+    outputs, codebooks=output_codebooks, skip_special_tokens=True, return_codebook=True
 ):
+    text, codebook = text_codebook_pairs
     print(text)
-    print("=" * 10)
+    codebooks.append(codebook)
 
-for text in tokenizer.color_decode(
-    outputs, output_codebooks, color_scheme="finegrained"
-):
+for text in tokenizer.color_decode(outputs, codebooks, color_scheme="finegrained"):
     print(text)
     print("=" * 10)

@@ -58,7 +58,7 @@ class Zip2ZipTokenizer(PushToHubMixin):
         return self.tokenizer(*args, **kwargs)
 
     def _lzw_encode(self, token_ids: List[int]) -> Tuple[List[int], Codebook]:
-        out, attention_mask, codebook = self.compressor.encode(token_ids)
+        out, _, codebook = self.compressor.encode(token_ids)
         return out, codebook
 
     def _batch_encode_plus(self, *args, **kwargs) -> BatchEncoding:
@@ -66,6 +66,7 @@ class Zip2ZipTokenizer(PushToHubMixin):
         padding = kwargs.pop("padding_strategy").value
         truncation = kwargs.pop("truncation_strategy").value
         max_length = kwargs.pop("max_length", None)
+        return_codebook = kwargs.pop("return_codebook", False)
 
         encoding = self.old_batch_encode_plus(*args, **kwargs)
 
@@ -83,28 +84,34 @@ class Zip2ZipTokenizer(PushToHubMixin):
         if return_tensors:
             encoding = encoding.convert_to_tensors(return_tensors)
 
-        encoding["codebooks"] = codebooks
+        if return_codebook:
+            encoding["codebooks"] = codebooks
+
         return encoding
 
-    def batch_decode(
-        self,
-        sequences: Union[List[int], List[List[int]], np.ndarray, torch.Tensor],
-        skip_special_tokens: bool = False,
-        clean_up_tokenization_spaces: bool = None,
-        **kwargs,
-    ) -> List[str]:
-        codebooks = kwargs.pop("codebooks", [None] * len(sequences))
+    # def batch_decode(
+    #     self,
+    #     sequences: Union[List[int], List[List[int]], np.ndarray, torch.Tensor],
+    #     skip_special_tokens: bool = False,
+    #     clean_up_tokenization_spaces: bool = None,
+    #     **kwargs,
+    # ) -> Union[List[str], List[Tuple[str, Codebook]]]:
+    #     return_codebook = kwargs.get("return_codebook", False)
 
-        return [
-            self.decode(
-                seq,
-                skip_special_tokens=skip_special_tokens,
-                clean_up_tokenization_spaces=clean_up_tokenization_spaces,
-                codebook=codebook,
-                **kwargs,
-            )
-            for (seq, codebook) in zip(sequences, codebooks)
-        ]
+    #     seq_codebook_pairs: List[Tuple[str, Codebook]] = [
+    #         self.decode(
+    #             seq,
+    #             skip_special_tokens=skip_special_tokens,
+    #             clean_up_tokenization_spaces=clean_up_tokenization_spaces,
+    #             **kwargs,
+    #         )
+    #         for seq in sequences
+    #     ]
+
+    #     if return_codebook:
+    #         return seq_codebook_pairs
+    #     else:
+    #         return [out for out, _ in seq_codebook_pairs]
 
     def _decode(
         self,
@@ -112,18 +119,24 @@ class Zip2ZipTokenizer(PushToHubMixin):
         skip_special_tokens: bool = False,
         clean_up_tokenization_spaces: bool = None,
         **kwargs,
-    ) -> str:
+    ) -> Union[str, Tuple[str, Codebook]]:
         if isinstance(token_ids, int):
             token_ids = [token_ids]
+        return_codebook = kwargs.pop("return_codebook", False)
 
-        token_ids = self._lzw_decode(token_ids, kwargs.get("codebook", None))
+        base_token_ids, codebook = self._lzw_decode(token_ids)
 
-        return self.old_decode(
-            token_ids, skip_special_tokens, clean_up_tokenization_spaces, **kwargs
+        text = self.old_decode(
+            base_token_ids, skip_special_tokens, clean_up_tokenization_spaces, **kwargs
         )
+        if return_codebook:
+            return text, codebook
+        else:
+            return text
 
-    def _lzw_decode(self, token_ids: List[int], codebook: Codebook) -> List[int]:
-        return self.compressor.decode(token_ids, codebook)
+    def _lzw_decode(self, token_ids: List[int]) -> Tuple[List[int], Codebook]:
+        out, codebook = self.compressor.decode(token_ids)
+        return out, codebook
 
     def save_pretrained(self, save_directory: str, **kwargs) -> None:
         self.zip2zip_config.save_pretrained(save_directory, **kwargs)
