@@ -15,17 +15,8 @@ zip2zip is a framework for inference-time adaptive token vocabularies for LLMs. 
 You can install zip2zip using pip:
 
 ```bash
-pip install .
+pip install git+https://github.com/epfl-dlab/zip2zip-internal-testing.git
 ```
-
-In addition, you need to install the `zip2zip-compression` package [here](https://github.com/epfl-dlab/zip2zip-compression).
-
-It depends on the python version and the platform.
-
-```bash
-pip install https://github.com/epfl-dlab/zip2zip-compression/releases/download/v0.2.0/zip2zip_compression-0.2.0-cp312-cp312-manylinux_2_34_x86_64.whl # for python 3.12 on x86_64
-```
-
 
 ## Usage
 
@@ -47,6 +38,13 @@ inputs = tokenizer("Write a MultiHeadAttention layer in PyTorch", return_tensors
 outputs = model.generate(**inputs)
 generated_text = tokenizer.batch_decode(outputs)
 ```
+
+You can apply quantization to the model to reduce the memory usage just as you would do with HF models.
+
+```python
+model = Zip2ZipModel.from_pretrained(pretrained_model_url, device_map="auto", load_in_8bit=True)
+```
+
 
 ### Examples
 

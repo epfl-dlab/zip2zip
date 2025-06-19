@@ -12,6 +12,7 @@ readme = "README.md"
 requires-python = ">=3.8"
 
 dependencies = [
+    "zip2zip-compression>=0.3.0",
     "torch>=2.5.0",
     "datasets<=3.1.0",
     "transformers>=4.47.0",
