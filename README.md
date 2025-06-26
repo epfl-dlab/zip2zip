@@ -23,7 +23,7 @@ pip install git+https://github.com/epfl-dlab/zip2zip-internal-testing.git
 ### Generate text with a pretrained model
 
 ```python
-from zip2zip import Zip2ZipModel, Zip2ZipTokenizer, Zip2ZipConfig
+from zip2zip import Zip2ZipModel, Zip2ZipTokenizer
 
 pretrained_model_url = "epfl-dlab/zip2zip-Phi-3.5-mini-instruct-v0.1"
 
