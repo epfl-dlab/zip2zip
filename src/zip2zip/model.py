@@ -52,9 +52,6 @@ class Zip2ZipModel(PushToHubMixin, nn.Module):
         )
         self.input_encoder, self.output_encoder = self.get_encoders()
         self.set_hyper_modules()
-        logger.warning(
-            "[Zip2Zip] HyperEncoder and HyperEmbedding were initialized without pretrained weights — using random initialization."
-        )
 
     def forward(self, *args, **kwargs) -> torch.Tensor:
         if not self.codebook_manager.is_initialized:

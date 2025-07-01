@@ -23,18 +23,21 @@ pip install git+https://github.com/epfl-dlab/zip2zip-internal-testing.git
 ### Generate text with a pretrained model
 
 ```python
-from zip2zip import Zip2ZipModel, Zip2ZipTokenizer, Zip2ZipConfig
+import torch
+from zip2zip import Zip2ZipModel, Zip2ZipTokenizer
 
 pretrained_model_url = "epfl-dlab/zip2zip-Phi-3.5-mini-instruct-v0.1"
+
+device = "cuda" if torch.cuda.is_available() else "cpu"
 
 # Initialize tokenizer
 tokenizer = Zip2ZipTokenizer.from_pretrained(pretrained_model_url)
 
 # Initialize model
-model = Zip2ZipModel.from_pretrained(pretrained_model_url, device_map="auto")
+model = Zip2ZipModel.from_pretrained(pretrained_model_url, device_map=device)
 
 # Generate text
-inputs = tokenizer("Write a MultiHeadAttention layer in PyTorch", return_tensors="pt")
+inputs = tokenizer("Write a MultiHeadAttention layer in PyTorch", return_tensors="pt").to(device)
 outputs = model.generate(**inputs)
 generated_text = tokenizer.batch_decode(outputs)
 ```
