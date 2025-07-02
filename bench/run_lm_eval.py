@@ -19,10 +19,13 @@ from zip2zip.model import Zip2ZipModel
 
 class Zip2ZipForLMEval(TemplateLM):
     def __init__(
-        self, zip2zip_model: Zip2ZipModel, zip2zip_tokenizer: Zip2ZipTokenizer
+        self,
+        zip2zip_model: Zip2ZipModel,
+        zip2zip_tokenizer: Zip2ZipTokenizer,
+        **model_kwargs
     ):
         self.hf_model_for_lmeval = HFLM(
-            pretrained=zip2zip_model, tokenizer=zip2zip_tokenizer
+            pretrained=zip2zip_model, tokenizer=zip2zip_tokenizer, **model_kwargs
         )
         # self.pad_token_id = zip2zip_tokenizer.pad_token_id
         # self.device = zip2zip_model.device
@@ -38,13 +41,21 @@ class Zip2ZipForLMEval(TemplateLM):
     def tok_encode(self, string: str, **kwargs) -> List[int]:
         return self.hf_model_for_lmeval.tok_encode(string, **kwargs)
 
+    @torch.no_grad()
     def generate_until(self, *args, **kwargs):
         return self.hf_model_for_lmeval.generate_until(*args, **kwargs)
 
     # for perplexity
+    @torch.no_grad()
     def loglikelihood_rolling(self, *args, **kwargs):
         self.hf_model_for_lmeval.model.clear_zip2zip_cache_after_forward = True
         return self.hf_model_for_lmeval.loglikelihood_rolling(*args, **kwargs)
+
+    # for discriminative tasks
+    @torch.no_grad()
+    def _loglikelihood_tokens(self, *args, **kwargs):
+        self.hf_model_for_lmeval.model.clear_zip2zip_cache_after_forward = True
+        return self.hf_model_for_lmeval._loglikelihood_tokens(*args, **kwargs)
 
     @property
     def tokenizer_name(self):
@@ -57,35 +68,31 @@ class Zip2ZipForLMEval(TemplateLM):
     def apply_chat_template(self, *args, **kwargs):
         return self.hf_model_for_lmeval.apply_chat_template(*args, **kwargs)
 
-    # for discriminative tasks
-    def _loglikelihood_tokens(self, *args, **kwargs):
-        self.hf_model_for_lmeval.model.clear_zip2zip_cache_after_forward = True
-        return self.hf_model_for_lmeval._loglikelihood_tokens(*args, **kwargs)
-
 
 if __name__ == "__main__":
     from lm_eval.evaluator import simple_evaluate
     from transformers import PreTrainedTokenizer
 
-    model_name = "epfl-dlab/zip2zip-Llama-3.2-3B-Instruct-v0.1"
+    # model_name = "epfl-dlab/zip2zip-Llama-3.2-3B-Instruct-v0.1"
+    model_name = "epfl-dlab/zip2zip-Phi-3.5-mini-instruct-v0.1"
 
     model = Zip2ZipModel.from_pretrained(
         model_name, device_map="cuda", torch_dtype=torch.float16
     )
     tokenizer = Zip2ZipTokenizer.from_pretrained(model_name)
 
-    # assert isinstance(tokenizer, PreTrainedTokenizer)
-
     model = Zip2ZipForLMEval(
         model,
         tokenizer,
+        max_length=1024,
+        batch_size=2,
     )
 
     results = simple_evaluate(
         model,
         tasks="arc_easy",
-        limit=10,
-        batch_size=2,
+        # tasks="wikitext",
+        limit=100,
         num_fewshot=2,
         apply_chat_template=True,
         fewshot_as_multiturn=True,
