@@ -46,18 +46,14 @@ class Zip2ZipModel(PushToHubMixin, nn.Module):
 
         self.dtype = base_model.dtype
         self.device = base_model.device
+        # in case of embedding model(as opposed to generation model), we need to clear the cache after forward, otherwise the cache will cumulate
+        self.clear_zip2zip_cache_after_forward = False
 
         self.codebook_manager = CodebookManager.from_config(
             config, self.dtype, self.device
         )
         self.input_encoder, self.output_encoder = self.get_encoders()
         self.set_hyper_modules()
-
-    def forward(self, *args, **kwargs) -> torch.Tensor:
-        if not self.codebook_manager.is_initialized:
-            raise ValueError("CodebookManager is not initialized")
-
-        return self.base_model.forward(*args, **kwargs)
 
     def set_hyper_modules(self) -> None:
         model_input_embeddings = self.base_model.get_input_embeddings()
@@ -153,17 +149,24 @@ class Zip2ZipModel(PushToHubMixin, nn.Module):
     def forward(self, *args, **kwargs) -> torch.Tensor:
         # here we need to handle the train case where we pass the codebooks as tensors
         # we should do that the same as the labels (to be compatible with the Trainer class)
+
+        if self.clear_zip2zip_cache_after_forward:
+            self.codebook_manager.reset()
+
         return self.base_model.forward(*args, **kwargs)
 
     def generate(self, *args, **kwargs) -> Union[GenerateOutput, torch.LongTensor]:
         codebooks = kwargs.pop("codebooks", None)
         input_ids = kwargs["input_ids"]
         batch_size = input_ids.shape[0]
-        self.codebook_manager.set_codebooks(batch_size, codebooks)
+        # TODO, we don't need to reset this incase of multi-turn generation
+        self.codebook_manager.init_codebooks_and_hyper_embeddings_weights(
+            batch_size, codebooks
+        )
 
         output = self.base_model.generate(*args, **kwargs)
 
-        # self.codebook_manager.reset()
+        self.codebook_manager.reset()
         return output
 
     def save_pretrained(

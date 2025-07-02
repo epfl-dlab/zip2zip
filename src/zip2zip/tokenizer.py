@@ -57,9 +57,17 @@ class Zip2ZipTokenizer(PushToHubMixin):
     def __call__(self, *args, **kwargs) -> BatchEncoding:
         return self.tokenizer(*args, **kwargs)
 
-    def _lzw_encode(self, token_ids: List[int]) -> Tuple[List[int], Codebook]:
-        out, _, codebook = self.compressor.encode(token_ids)
-        return out, codebook
+    def _lzw_encode(self, *args, **kwargs) -> Tuple[List[int], Codebook]:
+        encodings, attention_masks, codebooks = self.compressor.batch_encode(
+            *args, **kwargs
+        )
+        return [
+            (encoding, codebook)
+            for encoding, _, codebook in zip(encodings, attention_masks, codebooks)
+        ]
+
+    def _lzw_decode(self, *args, **kwargs) -> List[Tuple[List[int], Codebook]]:
+        return self.compressor.batch_decode(*args, **kwargs)
 
     def _batch_encode_plus(self, *args, **kwargs) -> BatchEncoding:
         return_tensors = kwargs.pop("return_tensors", None)
@@ -89,30 +97,6 @@ class Zip2ZipTokenizer(PushToHubMixin):
 
         return encoding
 
-    # def batch_decode(
-    #     self,
-    #     sequences: Union[List[int], List[List[int]], np.ndarray, torch.Tensor],
-    #     skip_special_tokens: bool = False,
-    #     clean_up_tokenization_spaces: bool = None,
-    #     **kwargs,
-    # ) -> Union[List[str], List[Tuple[str, Codebook]]]:
-    #     return_codebook = kwargs.get("return_codebook", False)
-
-    #     seq_codebook_pairs: List[Tuple[str, Codebook]] = [
-    #         self.decode(
-    #             seq,
-    #             skip_special_tokens=skip_special_tokens,
-    #             clean_up_tokenization_spaces=clean_up_tokenization_spaces,
-    #             **kwargs,
-    #         )
-    #         for seq in sequences
-    #     ]
-
-    #     if return_codebook:
-    #         return seq_codebook_pairs
-    #     else:
-    #         return [out for out, _ in seq_codebook_pairs]
-
     def _decode(
         self,
         token_ids: Union[int, List[int]],
@@ -120,11 +104,15 @@ class Zip2ZipTokenizer(PushToHubMixin):
         clean_up_tokenization_spaces: bool = None,
         **kwargs,
     ) -> Union[str, Tuple[str, Codebook]]:
+        # we add a dimension to the token_ids to make it a list of lists, which is required by _lzw_decode
         if isinstance(token_ids, int):
+            token_ids = [[token_ids]]
+        else:
             token_ids = [token_ids]
+
         return_codebook = kwargs.pop("return_codebook", False)
 
-        base_token_ids, codebook = self._lzw_decode(token_ids)
+        base_token_ids, codebook = self._lzw_decode(token_ids)[0]
 
         text = self.old_decode(
             base_token_ids, skip_special_tokens, clean_up_tokenization_spaces, **kwargs
@@ -133,10 +121,6 @@ class Zip2ZipTokenizer(PushToHubMixin):
             return text, codebook
         else:
             return text
-
-    def _lzw_decode(self, token_ids: List[int]) -> Tuple[List[int], Codebook]:
-        out, codebook = self.compressor.decode(token_ids)
-        return out, codebook
 
     def save_pretrained(self, save_directory: str, **kwargs) -> None:
         self.zip2zip_config.save_pretrained(save_directory, **kwargs)
@@ -159,27 +143,30 @@ class Zip2ZipTokenizer(PushToHubMixin):
     def color_decode(
         self,
         sequences: Union[List[int], List[List[int]], np.ndarray, torch.Tensor],
-        codebook: Union[Codebook, List[Codebook]],
+        codebooks: Optional[Union[Codebook, List[Codebook]]] = None,
         color_scheme: str = "finegrained",
     ) -> List[str]:
-        if isinstance(codebook, Codebook):
-            decompress_maps = [codebook.to_dict()]
-            sequences = [sequences]
-        else:
-            decompress_maps = [codebook.to_dict() for codebook in codebook]
-
         # convert tensor to list
         if isinstance(sequences, torch.Tensor):
             sequences = sequences.tolist()
         elif isinstance(sequences, np.ndarray):
             sequences = sequences.tolist()
 
+        if codebooks is None:
+            token_ids_codebook_pairs = self._lzw_decode(sequences)
+            codebooks = [codebook for _, codebook in token_ids_codebook_pairs]
+
+        if isinstance(codebooks, Codebook):
+            codebooks = [codebooks]
+
+        codebook_maps = [codebook.to_dict() for codebook in codebooks]
+
         out = []
 
-        for seq, decompress_map in zip(sequences, decompress_maps):
+        for seq, codebook_map in zip(sequences, codebook_maps):
             special_token_ids = set(self.tokenizer.get_added_vocab().values())
             colored_tokens = colorise_lzwtokens(
-                seq, decompress_map, color_scheme, special_token_ids
+                seq, codebook_map, color_scheme, special_token_ids
             )
             out.append(self.tokenizer.decode_colored_token(colored_tokens))
         return out

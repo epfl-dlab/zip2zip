@@ -50,9 +50,10 @@ class CodebookManager:
 
         self.embedding_weights = None
         self.linear_weights = None
-        self.is_initialized = False
 
-    def set_codebooks(
+        self.runtime_batch_size = None
+
+    def init_codebooks_and_hyper_embeddings_weights(
         self, batch_size: int, codebooks: Optional[List[Codebook]] = None
     ) -> None:
 
@@ -74,8 +75,6 @@ class CodebookManager:
             device=self.device,
         )
 
-        self.is_initialized = True
-
     def get_embedding_weights(
         self,
         ids: torch.LongTensor,
@@ -83,8 +82,16 @@ class CodebookManager:
         encoder: BaseEncoder,
     ) -> torch.Tensor:
 
-        if not self.is_initialized:
-            raise ValueError("CodebookManager is not initialized")
+        if self.embedding_weights is None:
+            self.runtime_batch_size = ids.shape[0]
+            self.embedding_weights = torch.zeros(
+                self.runtime_batch_size,
+                self.max_codebook_size,
+                self.embedding_dim,
+                dtype=self.dtype,
+                device=self.device,
+            )
+
         updates, updates_indices = self.internal_codebook_manager.update_codebooks(
             ids.tolist()
         )
@@ -107,8 +114,16 @@ class CodebookManager:
     def get_linear_weights(
         self, base_weight: torch.Tensor, encoder: BaseEncoder
     ) -> torch.Tensor:
-        if not self.is_initialized:
-            raise ValueError("CodebookManager is not initialized")
+
+        if self.linear_weights is None:
+            assert self.runtime_batch_size is not None, "Runtime batch size is not set"
+            self.linear_weights = torch.zeros(
+                self.runtime_batch_size,
+                self.max_codebook_size,
+                self.embedding_dim,
+                dtype=self.dtype,
+                device=self.device,
+            )
 
         if any(len(ui) > 0 for ui in self.updates_indices):
             new_weights = encoder(self.updates, base_weight, self.pad_token_id)
@@ -124,9 +139,9 @@ class CodebookManager:
 
         self.embedding_weights = None
         self.linear_weights = None
+        self.runtime_batch_size = None
 
         self.internal_codebook_manager.reset()
-        self.is_initialized = False
 
     def to(self, *args, **kwargs):
         self.embedding_weights = self.embedding_weights.to(*args, **kwargs)
