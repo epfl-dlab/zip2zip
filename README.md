@@ -39,7 +39,9 @@ model = Zip2ZipModel.from_pretrained(pretrained_model_url, device_map=device)
 # Generate text
 inputs = tokenizer("Write a MultiHeadAttention layer in PyTorch", return_tensors="pt").to(device)
 outputs = model.generate(**inputs)
-generated_text = tokenizer.batch_decode(outputs)
+
+# Print the coloried
+generated_text = tokenizer.color_decode(outputs)
 ```
 
 You can apply quantization to the model to reduce the memory usage just as you would do with HF models.

@@ -11,7 +11,7 @@ setup_seed()
 torch.set_float32_matmul_precision("high")
 
 # model_name = "epfl-dlab/zip2zip-Phi-3.5-mini-instruct-v0.1"
-model_name = "epfl-dlab/zip2zip-Llama-3.1-8B-Instruct-v0.1"
+model_name = "epfl-dlab/zip2zip-Llama-3.2-3B-Instruct-v0.1"
 
 model = Zip2ZipModel.from_pretrained(
     model_name,
@@ -61,26 +61,9 @@ outputs = model.generate(
     max_new_tokens=128,
     use_cache=True,
 )
-
-
-print(
-    f"num hyper tokens: {(outputs > model.zip2zip_config.compression.initial_vocab_size).sum().item()}"
-)
-
-# codebooks = [state.codebook for state in model.codebook_manager.internal_codebook_manager.states]
-output_codebooks = model.codebook_manager.internal_codebook_manager.get_codebooks()
-readable_codebooks = [codebook.to_dict() for codebook in output_codebooks]
-
-print(f"--decode with codebooks--")
-
-codebooks = []
-for text_codebook_pairs in tokenizer.batch_decode(
-    outputs, codebooks=output_codebooks, skip_special_tokens=True, return_codebook=True
-):
-    text, codebook = text_codebook_pairs
+for text in tokenizer.batch_decode(outputs, skip_special_tokens=True):
     print(text)
-    codebooks.append(codebook)
 
-for text in tokenizer.color_decode(outputs, codebooks, color_scheme="finegrained"):
+for text in tokenizer.color_decode(outputs, color_scheme="finegrained"):
     print(text)
     print("=" * 10)
