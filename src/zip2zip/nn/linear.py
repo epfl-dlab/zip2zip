@@ -31,7 +31,7 @@ class HyperLinear(nn.Linear):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         base_logits = super().forward(x)
 
-        hyper_linear_weights = self.codebook_manager.get_linear_weights(
+        hyper_linear_weights = self.codebook_manager.get_hyper_linear_weights(
             self.weight, self.encoder
         )
 
