@@ -160,7 +160,7 @@ class Zip2ZipModel(PushToHubMixin, nn.Module):
         input_ids = kwargs["input_ids"]
         batch_size = input_ids.shape[0]
         # TODO, we don't need to reset this incase of multi-turn generation
-        self.codebook_manager.init_codebooks_and_hyper_embeddings_weights(
+        self.codebook_manager.init_codebooks_and_hyper_weight_cache(
             batch_size, codebooks
         )
 
