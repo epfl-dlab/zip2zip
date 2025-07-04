@@ -36,18 +36,18 @@ class HyperEmbedding(nn.Embedding):
         base_input_ids = input * base_token_mask.long()
         hyper_input_ids = (input - self.initial_vocab_size) * hyper_token_mask.long()
 
-        hyper_embedding_weight = self.codebook_manager.get_embedding_weights(
+        hyper_embedding_weights = self.codebook_manager.get_hyper_embedding_weights(
             input, self.weight, self.encoder
         )
 
         batch_offsets = torch.arange(
             input.size(0), device=input.device, dtype=torch.long
-        ).unsqueeze(-1).expand_as(input) * hyper_embedding_weight.size(1)
+        ).unsqueeze(-1).expand_as(input) * hyper_embedding_weights.size(1)
 
         hyper_input_ids += batch_offsets
         base_embedding = super().forward(base_input_ids) * base_token_mask.unsqueeze(-1)
         hyper_embedding = F.embedding(
-            hyper_input_ids, hyper_embedding_weight.view(-1, self.embedding_dim)
+            hyper_input_ids, hyper_embedding_weights.view(-1, self.embedding_dim)
         ) * hyper_token_mask.unsqueeze(-1)
 
         return base_embedding + hyper_embedding
