@@ -32,7 +32,7 @@ class Zip2ZipForLMEval(TemplateLM):
         zip2zip_tokenizer: Zip2ZipTokenizer,
         **model_kwargs,
     ):
-        self.hf_model_for_lmeval = HFLM(
+        self.zip2zip_model_for_lmeval = HFLM(
             pretrained=zip2zip_model, tokenizer=zip2zip_tokenizer, **model_kwargs
         )
         self._original_tokenizer = AutoTokenizer.from_pretrained(
@@ -40,45 +40,107 @@ class Zip2ZipForLMEval(TemplateLM):
         )
 
     def __getattr__(self, name: str):
-        return getattr(self.hf_model_for_lmeval, name)
+        return getattr(self.zip2zip_model_for_lmeval, name)
 
     # add this to make python think we have implemented the abstract methods
     @property
     def eot_token_id(self):
-        return self.hf_model_for_lmeval.eot_token_id
+        return self.zip2zip_model_for_lmeval.eot_token_id
 
     def tok_encode(self, string: str, **kwargs) -> List[int]:
-        return self.hf_model_for_lmeval.tok_encode(string, **kwargs)
+        return self.zip2zip_model_for_lmeval.tok_encode(string, **kwargs)
 
     def tok_decode(self, tokens, skip_special_tokens=True):
-        return self.hf_model_for_lmeval.tok_decode(tokens, skip_special_tokens)
+        return self.zip2zip_model_for_lmeval.tok_decode(tokens, skip_special_tokens)
 
     @torch.no_grad()
     def generate_until(self, *args, **kwargs):
-        return self.hf_model_for_lmeval.generate_until(*args, **kwargs)
+        return self.zip2zip_model_for_lmeval.generate_until(*args, **kwargs)
 
     # for perplexity
     @torch.no_grad()
     def loglikelihood_rolling(self, *args, **kwargs):
-        self.hf_model_for_lmeval.model.clear_zip2zip_cache_after_forward = True
-        return self.hf_model_for_lmeval.loglikelihood_rolling(*args, **kwargs)
+        self.zip2zip_model_for_lmeval.model.clear_zip2zip_cache_after_forward = True
+        return self.zip2zip_model_for_lmeval.loglikelihood_rolling(*args, **kwargs)
 
     # for discriminative tasks
     @torch.no_grad()
     def _loglikelihood_tokens(self, *args, **kwargs):
-        self.hf_model_for_lmeval.model.clear_zip2zip_cache_after_forward = True
-        return self.hf_model_for_lmeval._loglikelihood_tokens(*args, **kwargs)
+        self.zip2zip_model_for_lmeval.model.clear_zip2zip_cache_after_forward = True
+        return self.zip2zip_model_for_lmeval._loglikelihood_tokens(*args, **kwargs)
 
     @property
     def tokenizer_name(self):
-        return self.hf_model_for_lmeval.tokenizer_name
+        return self.zip2zip_model_for_lmeval.tokenizer_name
 
     @property
     def tokenizer(self):
-        return self.hf_model_for_lmeval.tokenizer
+        return self.zip2zip_model_for_lmeval.tokenizer
 
     def apply_chat_template(self, *args, **kwargs):
-        return self.hf_model_for_lmeval.apply_chat_template(*args, **kwargs)
+        return self.zip2zip_model_for_lmeval.apply_chat_template(*args, **kwargs)
+
+    @torch.no_grad()
+    def loglikelihood_rolling(
+        self, requests: List[Instance], _: bool = False
+    ) -> List[float]:
+        self.zip2zip_model_for_lmeval.model.clear_zip2zip_cache_after_forward = True
+        outputs = []
+
+        for request in tqdm(requests, desc="Running loglikelihood requests"):
+            context = request.args[0]
+            context_enc = self._original_tokenizer.encode(context)
+
+            if not context_enc:
+                outputs.append(0.0)
+                continue
+
+            total_log_prob = 0.0
+            for prefix_tokens, pred_tokens in map(
+                make_disjoint_window,
+                get_rolling_token_windows(
+                    context_enc,
+                    prefix_token=self.tokenizer.eos_token_id,
+                    max_seq_len=self.max_length,
+                    context_len=1,
+                ),
+            ):
+                prefix_tokens = [
+                    self.tokenizer.eos_token_id
+                ]  # TODO, we are throwing away the prefix token, which would cause different from original HF model
+                lzw_token_ids, attention_mask, codebook = self.tokenizer._lzw_encode(
+                    [prefix_tokens + pred_tokens], padding=False
+                )[0]
+
+                lzw_prefix_length = len(
+                    self.tokenizer._lzw_encode([prefix_tokens], padding=False)[0][0]
+                )
+
+                input_ids = torch.tensor(lzw_token_ids, device=self.device).unsqueeze(0)
+                # attention_mask = torch.tensor(attention_mask, device=self.device).unsqueeze(0)
+                attention_mask = input_ids.ne(self.tokenizer.pad_token_id)
+
+                # logits: (B, S, V + V_E + V_reserved)
+                out = self.zip2zip_model_for_lmeval.model.forward(
+                    input_ids, attention_mask=attention_mask
+                )
+                log_probs = F.log_softmax(out.logits, dim=-1)
+
+                # drop the last token
+                log_probs = log_probs[:, lzw_prefix_length - 1 : -1, :]
+                # drop the first token from the input_ids
+                labels = input_ids[:, lzw_prefix_length:]
+
+                chunk_log_probs = torch.gather(
+                    log_probs, 2, labels.unsqueeze(-1)
+                ).squeeze(-1)
+
+                total_log_prob += chunk_log_probs.sum().item()
+                print(chunk_log_probs.sum().item())
+
+            outputs.append(total_log_prob)
+
+        return outputs
 
 
 def save_lm_eval_results_to_yaml(results: Dict[str, Any], filepath: str) -> None:
@@ -108,8 +170,8 @@ def save_lm_eval_results_to_yaml(results: Dict[str, Any], filepath: str) -> None
 if __name__ == "__main__":
     from lm_eval.evaluator import simple_evaluate
 
-    model_name = "epfl-dlab/zip2zip-Llama-3.2-3B-Instruct-v0.1"
-    # model_name = "epfl-dlab/zip2zip-Phi-3.5-mini-instruct-v0.1"
+    # model_name = "epfl-dlab/zip2zip-Llama-3.2-3B-Instruct-v0.1"
+    model_name = "epfl-dlab/zip2zip-Phi-3.5-mini-instruct-v0.1"
 
     model = Zip2ZipModel.from_pretrained(
         model_name, device_map="cuda", torch_dtype=torch.float16
@@ -119,9 +181,11 @@ if __name__ == "__main__":
     model = Zip2ZipForLMEval(
         model,
         tokenizer,
-        # max_length=1024,
+        max_length=1024,
         batch_size=5,
     )
+
+    model.model.eval()
 
     # disable all parameters in the model
     for param in model.model.parameters():
@@ -132,8 +196,9 @@ if __name__ == "__main__":
         # tasks="arc_easy",
         # ai2_arc,openbookqa,piqa,winogrande,commonsense_qa,lambada,mathqa,hellaswag
         # tasks=["openbookqa", "piqa", "winogrande", "commonsense_qa", "lambada", "mathqa", "hellaswag"],
-        tasks=["wmt14-fr-en", "wmt14-en-fr"],
-        limit=10,
+        # tasks=["wmt14-fr-en", "wmt14-en-fr"],
+        tasks="paloma_mc4",
+        limit=20,
         num_fewshot=2,
         apply_chat_template=True,
         fewshot_as_multiturn=True,
