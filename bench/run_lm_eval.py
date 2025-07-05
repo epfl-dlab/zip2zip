@@ -1,28 +1,23 @@
 from datetime import datetime
 import os
-from typing import Optional, Union
 import torch
-from torch import nn
 import torch.nn.functional as F
-from safetensors import safe_open
 from tqdm import tqdm
+import lm_eval
 from lm_eval.api.model import TemplateLM
-from typing import List, Dict, Tuple, Any
+from typing import List, Dict, Any
 from lm_eval.api.instance import Instance
-from huggingface_hub import snapshot_download
-from torchao.float8 import convert_to_float8_training
-from transformers import AutoModelForCausalLM, AutoTokenizer
+from transformers import AutoTokenizer
 from lm_eval.utils import get_rolling_token_windows, make_disjoint_window, make_table
 from lm_eval.models.huggingface import HFLM
-from zip2zip.config import Zip2ZipConfig
-from zip2zip.logging_utils import configure_logging
 from zip2zip.tokenizer import Zip2ZipTokenizer
 from zip2zip.model import Zip2ZipModel
 
-
-# create a type alias for Tuple[List[int]] called Batched
-
-Pair = Tuple[List[int], List[int]]
+# verify that we are using the zip2zip fork of lm-evaluation-harness
+if getattr(lm_eval, "__fork__", None) != "epfl-dlab/zip2zip_lm_eval":
+    raise ValueError(
+        "You are not using the zip2zip fork of lm-evaluation-harness. Please uninstall it using `pip uninstall lm-eval` and install it using `pip install git+https://github.com/epfl-dlab/zip2zip_lm_eval.git`"
+    )
 
 
 class Zip2ZipForLMEval(TemplateLM):

@@ -89,6 +89,23 @@ We provide pretrained models for zip2zip at [Hugging Face](https://huggingface.c
 - `epfl-dlab/zip2zip-Phi-3.5-mini-instruct-v0.1`: Phi-3.5-mini-instruct-v0.1
 - `epfl-dlab/zip2zip-Llama-3.1-8B-Instruct-v0.1`: Llama-3.1-8B-Instruct-v0.1
 
+## Evaluation
+
+We provide a script to evaluate the performance of the model, compatible with [lm-evaluation-harness](https://github.com/EleutherAI/lm-evaluation-harness).
+
+To run the evaluation, you need to install the zip2zip fork of lm-evaluation-harness (the original one is not compatible with zip2zip).
+
+```bash
+pip install git+https://github.com/epfl-dlab/zip2zip_lm_eval.git
+```
+
+Then, you can run the evaluation:
+
+```bash
+python bench/run_lm_eval.py
+```
+
+
 
 ## Citation
 
