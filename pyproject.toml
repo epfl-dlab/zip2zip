@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "zip2zip"
-version = "0.1.0"
+version = "0.1.1"
 description = "Inference-time adaptive token vocabularies for LLMs"
 authors = [{ name = "EPFL-DLAB", email = "saibo.geng@epfl.ch" }]
 license = { file = "LICENSE" }
@@ -12,7 +12,7 @@ readme = "README.md"
 requires-python = ">=3.8"
 
 dependencies = [
-    "zip2zip-compression>=0.3.0",
+    "zip2zip-compression>=0.3.2",
     "torch>=2.5.0",
     "datasets<=3.1.0",
     "transformers>=4.47.0",
