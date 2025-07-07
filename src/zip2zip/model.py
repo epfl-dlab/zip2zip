@@ -153,6 +153,11 @@ class Zip2ZipModel(PushToHubMixin, nn.Module):
         if self.clear_zip2zip_cache_after_forward:
             self.codebook_manager.reset()
 
+        if kwargs.get("labels", None):
+            codebooks = kwargs.get("codebooks")
+            assert codebooks, "Pre-computed codebooks must be given to the forward function of the model."
+            self.codebook_manager.set_codebooks_when_training(codebooks)
+
         return self.base_model.forward(*args, **kwargs)
 
     def generate(self, *args, **kwargs) -> Union[GenerateOutput, torch.LongTensor]:

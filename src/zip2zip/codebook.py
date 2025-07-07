@@ -47,16 +47,19 @@ class CodebookManager:
 
         self.updates = None
         self.updates_indices = None
+        self.training_codebooks = None
 
         self.hyper_embedding_weight_cache = None
         self.hyper_linear_weight_cache = None
 
         self.runtime_batch_size = None
 
+    def set_codebooks_when_training(self, codebooks: torch.Tensor) -> None:
+        self.training_codebooks = codebooks
+
     def init_codebooks_and_hyper_weight_cache(
         self, batch_size: int, codebooks: Optional[List[Codebook]] = None
     ) -> None:
-
         if codebooks is not None:
             self.internal_codebook_manager.set_codebooks(codebooks)
 
@@ -81,6 +84,8 @@ class CodebookManager:
         base_weight: torch.Tensor,
         encoder: BaseEncoder,
     ) -> torch.Tensor:
+        if self.training_codebooks:
+            return encoder(self.training_codebooks, base_weight, self.pad_token_id)
 
         if self.hyper_embedding_weight_cache is None:
             self.runtime_batch_size = ids.shape[0]
@@ -114,6 +119,8 @@ class CodebookManager:
     def get_hyper_linear_weights(
         self, base_weight: torch.Tensor, encoder: BaseEncoder
     ) -> torch.Tensor:
+        if self.training_codebooks:
+            return encoder(self.training_codebooks, base_weight, self.pad_token_id)
 
         if self.hyper_linear_weight_cache is None:
             assert self.runtime_batch_size is not None, "Runtime batch size is not set"
