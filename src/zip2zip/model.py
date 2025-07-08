@@ -156,13 +156,8 @@ class Zip2ZipModel(PushToHubMixin, nn.Module):
         return self.base_model.forward(*args, **kwargs)
 
     def generate(self, *args, **kwargs) -> Union[GenerateOutput, torch.LongTensor]:
-        codebooks = kwargs.pop("codebooks", None)
-        input_ids = kwargs["input_ids"]
-        batch_size = input_ids.shape[0]
         # TODO, we don't need to reset this incase of multi-turn generation
-        self.codebook_manager.init_codebooks_and_hyper_weight_cache(
-            batch_size, codebooks
-        )
+        self.codebook_manager.reset()
 
         output = self.base_model.generate(*args, **kwargs)
 

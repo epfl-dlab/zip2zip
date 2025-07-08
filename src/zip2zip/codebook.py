@@ -45,35 +45,45 @@ class CodebookManager:
             algorithm=algorithm,
         )
 
-        self.updates = None
-        self.updates_indices = None
+        self.updates: Optional[torch.Tensor] = None
+        self.updates_indices: Optional[List[List[int]]] = None
 
         self.hyper_embedding_weight_cache = None
         self.hyper_linear_weight_cache = None
 
         self.runtime_batch_size = None
 
-    def init_codebooks_and_hyper_weight_cache(
-        self, batch_size: int, codebooks: Optional[List[Codebook]] = None
-    ) -> None:
+        self.static = False
+        self.prebuilt_codebooks = None
 
-        if codebooks is not None:
-            self.internal_codebook_manager.set_codebooks(codebooks)
+    @staticmethod
+    def _compute_static_codebook(
+        codebooks: List[Codebook],
+        base_weight: torch.Tensor,
+        encoder: BaseEncoder,
+        pad_token_id: int = 0,
+    ) -> torch.Tensor:
+        codebook_entries: List[List[List[int]]] = [
+            codebook.to_list(use_padding=True) for codebook in codebooks
+        ]
 
-        self.hyper_embedding_weight_cache = torch.zeros(
-            batch_size,
-            self.max_codebook_size,
-            self.embedding_dim,
-            dtype=self.dtype,
-            device=self.device,
+        updates = torch.tensor(codebook_entries, dtype=torch.long).to(
+            base_weight.device
         )
-        self.hyper_linear_weight_cache = torch.zeros(
-            batch_size,
-            self.max_codebook_size,
-            self.embedding_dim,
-            dtype=self.dtype,
-            device=self.device,
-        )
+
+        embedding_weights = encoder(updates, base_weight, pad_token_id)
+        return embedding_weights
+
+    def set_prebuilt_codebooks(self, codebooks: List[Codebook]) -> None:
+
+        if isinstance(codebooks, Codebook):
+            codebooks = [codebooks]
+
+        # self.internal_codebook_manager.set_codebooks(codebooks)
+
+        self.prebuilt_codebooks = codebooks
+
+        self.static = True
 
     def get_hyper_embedding_weights(
         self,
@@ -81,6 +91,16 @@ class CodebookManager:
         base_weight: torch.Tensor,
         encoder: BaseEncoder,
     ) -> torch.Tensor:
+
+        # In case of prebuilt statc codebooks, the updates will always be None from the second call onwards;
+        # But it will be non-None for the first call to compute the entire prebuilt codebooks
+        if self.static:
+            assert self.prebuilt_codebooks is not None, "Prebuilt codebooks are not set"
+            if self.hyper_embedding_weight_cache is None:
+                self.hyper_embedding_weight_cache = self._compute_static_codebook(
+                    self.prebuilt_codebooks, base_weight, encoder, self.pad_token_id
+                )
+            return self.hyper_embedding_weight_cache
 
         if self.hyper_embedding_weight_cache is None:
             self.runtime_batch_size = ids.shape[0]
@@ -115,6 +135,14 @@ class CodebookManager:
         self, base_weight: torch.Tensor, encoder: BaseEncoder
     ) -> torch.Tensor:
 
+        if self.static:
+            assert self.prebuilt_codebooks is not None, "Prebuilt codebooks are not set"
+            if self.hyper_linear_weight_cache is None:
+                self.hyper_linear_weight_cache = self._compute_static_codebook(
+                    self.prebuilt_codebooks, base_weight, encoder, self.pad_token_id
+                )
+            return self.hyper_linear_weight_cache
+
         if self.hyper_linear_weight_cache is None:
             assert self.runtime_batch_size is not None, "Runtime batch size is not set"
             self.hyper_linear_weight_cache = torch.zeros(
@@ -130,6 +158,9 @@ class CodebookManager:
 
             for i, ui in enumerate(self.updates_indices):
                 self.hyper_linear_weight_cache[i, ui] = new_weights[i, : len(ui)]
+
+        self.updates = None
+        self.updates_indices = None
 
         return self.hyper_linear_weight_cache
 
