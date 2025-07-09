@@ -147,18 +147,19 @@ class Zip2ZipModel(PushToHubMixin, nn.Module):
             return getattr(self.base_model, name)
 
     def forward(self, *args, **kwargs) -> torch.Tensor:
-        # here we need to handle the train case where we pass the codebooks as tensors
-        # we should do that the same as the labels (to be compatible with the Trainer class)
-
         if self.clear_zip2zip_cache_after_forward:
             self.codebook_manager.reset()
 
-        if kwargs.get("labels", None):
-            codebooks = kwargs.get("codebooks")
-            assert codebooks, "Pre-computed codebooks must be given to the forward function of the model."
-            self.codebook_manager.set_codebooks_when_training(codebooks)
+        if kwargs.get("labels", None) is not None:
+            self.base_model.config.vocab_size += self.zip2zip_config.compression.max_codebook_size
 
-        return self.base_model.forward(*args, **kwargs)
+        output = self.base_model.forward(*args, **kwargs)
+
+        if kwargs.get("labels", None) is not None:
+            self.base_model.config.vocab_size -= self.zip2zip_config.compression.max_codebook_size
+            self.codebook_manager.reset()
+
+        return output
 
     def generate(self, *args, **kwargs) -> Union[GenerateOutput, torch.LongTensor]:
         codebooks = kwargs.pop("codebooks", None)

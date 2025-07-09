@@ -84,7 +84,7 @@ class CodebookManager:
         base_weight: torch.Tensor,
         encoder: BaseEncoder,
     ) -> torch.Tensor:
-        if self.training_codebooks:
+        if self.training_codebooks is not None:
             return encoder(self.training_codebooks, base_weight, self.pad_token_id)
 
         if self.hyper_embedding_weight_cache is None:
@@ -119,7 +119,7 @@ class CodebookManager:
     def get_hyper_linear_weights(
         self, base_weight: torch.Tensor, encoder: BaseEncoder
     ) -> torch.Tensor:
-        if self.training_codebooks:
+        if self.training_codebooks is not None:
             return encoder(self.training_codebooks, base_weight, self.pad_token_id)
 
         if self.hyper_linear_weight_cache is None:
