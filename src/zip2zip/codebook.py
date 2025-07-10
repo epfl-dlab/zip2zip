@@ -4,8 +4,8 @@ import torch
 import logging
 from typing import List, Optional
 from transformers import AutoTokenizer
+from zip2zip_compression import CompressionConfig
 from zip2zip_compression import Codebook, CodebookManager as RustCodebookManager
-from zip2zip_compression import CodebookConfig
 
 from zip2zip.config import Zip2ZipConfig
 from zip2zip.nn.encoders.base import BaseEncoder
@@ -23,8 +23,7 @@ class CodebookManager:
         dtype: torch.dtype,
         device: torch.device,
         pad_token_id: int,
-        disabled_ids: set[int] = set(),
-        algorithm: str = "fault_tolerant_lzw",
+        disabled_ids: Optional[List[int]] = None,
     ):
         self.dtype = dtype
         self.device = device
@@ -35,27 +34,22 @@ class CodebookManager:
         self.initial_vocab_size = initial_vocab_size
 
         self.internal_codebook_manager = RustCodebookManager(
-            config=CodebookConfig(
+            config=CompressionConfig(
                 initial_vocab_size=initial_vocab_size,
                 max_codebook_size=max_codebook_size,
                 max_subtokens=max_subtokens,
                 pad_token_id=pad_token_id,
-                disabled_ids=set(disabled_ids) if disabled_ids else set(),
-            ),
-            algorithm=algorithm,
+                disabled_ids=disabled_ids,
+            )
         )
 
         self.updates = None
         self.updates_indices = None
-        self.training_codebooks = None
 
         self.hyper_embedding_weight_cache = None
         self.hyper_linear_weight_cache = None
 
         self.runtime_batch_size = None
-
-    def set_codebooks_when_training(self, codebooks: torch.Tensor) -> None:
-        self.training_codebooks = codebooks
 
     def init_codebooks_and_hyper_weight_cache(
         self, batch_size: int, codebooks: Optional[List[Codebook]] = None
@@ -84,9 +78,6 @@ class CodebookManager:
         base_weight: torch.Tensor,
         encoder: BaseEncoder,
     ) -> torch.Tensor:
-        if self.training_codebooks is not None:
-            return encoder(self.training_codebooks, base_weight, self.pad_token_id)
-
         if self.hyper_embedding_weight_cache is None:
             self.runtime_batch_size = ids.shape[0]
             self.hyper_embedding_weight_cache = torch.zeros(
@@ -119,9 +110,6 @@ class CodebookManager:
     def get_hyper_linear_weights(
         self, base_weight: torch.Tensor, encoder: BaseEncoder
     ) -> torch.Tensor:
-        if self.training_codebooks is not None:
-            return encoder(self.training_codebooks, base_weight, self.pad_token_id)
-
         if self.hyper_linear_weight_cache is None:
             assert self.runtime_batch_size is not None, "Runtime batch size is not set"
             self.hyper_linear_weight_cache = torch.zeros(
