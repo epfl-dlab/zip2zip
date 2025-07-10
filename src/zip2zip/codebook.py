@@ -8,7 +8,7 @@ from zip2zip_compression import CompressionConfig
 from zip2zip_compression import Codebook, CodebookManager as RustCodebookManager
 
 from zip2zip.config import Zip2ZipConfig
-from zip2zip.nn.encoders.base import BaseEncoder
+from zip2zip.nn.encoders.base import EncoderFn
 
 logger = logging.getLogger(__name__)
 
@@ -76,7 +76,7 @@ class CodebookManager:
         self,
         ids: torch.LongTensor,
         base_weight: torch.Tensor,
-        encoder: BaseEncoder,
+        encoder_fn: EncoderFn,
     ) -> torch.Tensor:
         if self.hyper_embedding_weight_cache is None:
             self.runtime_batch_size = ids.shape[0]
@@ -101,14 +101,14 @@ class CodebookManager:
         self.updates_indices = updates_indices
 
         if any(len(ui) > 0 for ui in self.updates_indices):
-            new_weights = encoder(self.updates, base_weight, self.pad_token_id)
+            new_weights = encoder_fn(self.updates, base_weight, self.pad_token_id)
 
             for i, ui in enumerate(self.updates_indices):
                 self.hyper_embedding_weight_cache[i, ui] = new_weights[i, : len(ui)]
         return self.hyper_embedding_weight_cache
 
     def get_hyper_linear_weights(
-        self, base_weight: torch.Tensor, encoder: BaseEncoder
+        self, base_weight: torch.Tensor, encoder_fn: EncoderFn
     ) -> torch.Tensor:
         if self.hyper_linear_weight_cache is None:
             assert self.runtime_batch_size is not None, "Runtime batch size is not set"
@@ -121,7 +121,7 @@ class CodebookManager:
             )
 
         if any(len(ui) > 0 for ui in self.updates_indices):
-            new_weights = encoder(self.updates, base_weight, self.pad_token_id)
+            new_weights = encoder_fn(self.updates, base_weight, self.pad_token_id)
 
             for i, ui in enumerate(self.updates_indices):
                 self.hyper_linear_weight_cache[i, ui] = new_weights[i, : len(ui)]

@@ -26,7 +26,7 @@ class HyperEmbedding(nn.Embedding):
             num_embeddings, embedding_dim, padding_idx, device=device, dtype=dtype
         )
         self.config = config
-        self.encoder = encoder
+        self.encoder_fn = encoder.get_encoder_fn()
         self.initial_vocab_size = initial_vocab_size
         self.codebook_manager = codebook_manager
 
@@ -37,7 +37,7 @@ class HyperEmbedding(nn.Embedding):
         hyper_input_ids = (input - self.initial_vocab_size) * hyper_token_mask.long()
 
         hyper_embedding_weights = self.codebook_manager.get_hyper_embedding_weights(
-            input, self.weight, self.encoder
+            input, self.weight, self.encoder_fn
         )
 
         batch_offsets = torch.arange(
