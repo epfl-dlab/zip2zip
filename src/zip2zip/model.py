@@ -6,12 +6,12 @@ import inspect
 import logging
 from torch import nn
 from typing import Tuple, Optional, Union
-from peft import PeftModel, PeftMixedModel
 from huggingface_hub import hf_hub_download
 from transformers.utils import PushToHubMixin
 from safetensors.torch import save_file, load_file
 from transformers.generation.utils import GenerateOutput
 from transformers import PreTrainedModel, AutoModelForCausalLM
+from peft import PeftModel, PeftMixedModel, PeftConfig, get_peft_model
 
 from zip2zip.config import Zip2ZipConfig
 from zip2zip.nn.linear import HyperLinear
@@ -30,6 +30,7 @@ class Zip2ZipModel(PushToHubMixin, nn.Module):
         self,
         config: Zip2ZipConfig[EncoderConfigType],
         base_model: Optional[PreTrainedModel] = None,
+        peft_config: Optional[PeftConfig] = None,
         **kwargs,
     ) -> None:
         super().__init__()
@@ -40,7 +41,9 @@ class Zip2ZipModel(PushToHubMixin, nn.Module):
                 config.base_model_name_or_path, **kwargs
             )
 
-        # TODO, needs to create peft model here, this would probably require to expand the Zip2ZipConfig class
+        if peft_config is not None:
+            base_model = get_peft_model(base_model, peft_config)
+
         self.base_model = base_model
 
         self.dtype = base_model.dtype
