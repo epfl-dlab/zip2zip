@@ -18,8 +18,8 @@ from zip2zip.nn.linear import HyperLinear
 from zip2zip.codebook import CodebookManager
 from zip2zip.nn.embedding import HyperEmbedding
 from zip2zip.nn.encoders.base import BaseEncoder
-from zip2zip.nn.encoders.config import EncoderConfigType
 from zip2zip.constants import SAFETENSORS_ENCODERS_NAME
+from zip2zip.nn.encoders.config import EncoderConfigType
 
 
 logger = logging.getLogger(__name__)
@@ -41,7 +41,6 @@ class Zip2ZipModel(PushToHubMixin, nn.Module):
             )
 
         # TODO, needs to create peft model here, this would probably require to expand the Zip2ZipConfig class
-
         self.base_model = base_model
 
         self.dtype = base_model.dtype
@@ -72,7 +71,7 @@ class Zip2ZipModel(PushToHubMixin, nn.Module):
                 HyperLinear.from_linear(
                     model_output_embeddings,
                     self.zip2zip_config,
-                    self.output_encoder,
+                    self.output_encoder or self.input_encoder,
                     self.codebook_manager,
                 )
             )
@@ -83,7 +82,7 @@ class Zip2ZipModel(PushToHubMixin, nn.Module):
         ).to(self.device, self.dtype)
 
         if self.zip2zip_config.encoder.tie_encoders:
-            return input_encoder, input_encoder
+            return input_encoder, None
         else:
             output_encoder = BaseEncoder.from_config(
                 self.zip2zip_config.encoder, self.zip2zip_config.compression
@@ -151,12 +150,16 @@ class Zip2ZipModel(PushToHubMixin, nn.Module):
             self.codebook_manager.reset()
 
         if kwargs.get("labels", None) is not None:
-            self.base_model.config.vocab_size += self.zip2zip_config.compression.max_codebook_size
+            self.base_model.config.vocab_size += (
+                self.zip2zip_config.compression.max_codebook_size
+            )
 
         output = self.base_model.forward(*args, **kwargs)
 
         if kwargs.get("labels", None) is not None:
-            self.base_model.config.vocab_size -= self.zip2zip_config.compression.max_codebook_size
+            self.base_model.config.vocab_size -= (
+                self.zip2zip_config.compression.max_codebook_size
+            )
             self.codebook_manager.reset()
 
         return output
