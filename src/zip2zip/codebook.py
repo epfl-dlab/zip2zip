@@ -126,7 +126,7 @@ class CodebookManager:
             for i, ui in enumerate(self.updates_indices):
                 self.hyper_linear_weight_cache[i, ui] = new_weights[i, : len(ui)]
 
-        return self.hyper_linear_weight_cache * torch.all(
+        return self.hyper_linear_weight_cache * torch.any(
             self.updates != self.pad_token_id, dim=-1, keepdim=True
         )
 
