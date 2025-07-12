@@ -150,7 +150,7 @@ class Zip2ZipModel(PushToHubMixin, nn.Module):
 
     def forward(self, *args, **kwargs) -> torch.Tensor:
         is_training = kwargs.get("labels", None) is not None
-        
+
         if self.clear_zip2zip_cache_after_forward:
             self.codebook_manager.reset()
 
