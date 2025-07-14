@@ -10,8 +10,7 @@ configure_logging()
 setup_seed()
 torch.set_float32_matmul_precision("high")
 
-# model_name = "epfl-dlab/zip2zip-Phi-3.5-mini-instruct-v0.1"
-model_name = "epfl-dlab/zip2zip-Llama-3.2-3B-Instruct-v0.1"
+model_name = "epfl-dlab/zip2zip-Phi-3.5-mini-instruct-v0.1"
 
 model = Zip2ZipModel.from_pretrained(
     model_name,
@@ -58,7 +57,7 @@ inputs = tokenizer(
 outputs = model.generate(
     **inputs,
     do_sample=False,
-    max_new_tokens=128,
+    max_new_tokens=256,
     use_cache=True,
 )
 for text in tokenizer.batch_decode(outputs, skip_special_tokens=True):

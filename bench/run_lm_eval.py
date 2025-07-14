@@ -165,7 +165,6 @@ def save_lm_eval_results_to_yaml(results: Dict[str, Any], filepath: str) -> None
 if __name__ == "__main__":
     from lm_eval.evaluator import simple_evaluate
 
-    # model_name = "epfl-dlab/zip2zip-Llama-3.2-3B-Instruct-v0.1"
     model_name = "epfl-dlab/zip2zip-Phi-3.5-mini-instruct-v0.1"
 
     model = Zip2ZipModel.from_pretrained(
@@ -188,10 +187,6 @@ if __name__ == "__main__":
 
     results = simple_evaluate(
         model,
-        # tasks="arc_easy",
-        # ai2_arc,openbookqa,piqa,winogrande,commonsense_qa,lambada,mathqa,hellaswag
-        # tasks=["openbookqa", "piqa", "winogrande", "commonsense_qa", "lambada", "mathqa", "hellaswag"],
-        # tasks=["wmt14-fr-en", "wmt14-en-fr"],
         tasks="paloma_mc4",
         limit=20,
         num_fewshot=2,
