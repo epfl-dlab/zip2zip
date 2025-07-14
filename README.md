@@ -1,6 +1,15 @@
-# zip2zip (Beta)
+# zip2zip: Inference-Time Adaptive Vocabularies for Language Models via Token Compression
 
-zip2zip is a framework for inference-time adaptive token vocabularies for LLMs. It enables dynamic vocabulary adaptation during inference, allowing for more efficient and flexible language model usage.
+![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)
+[![arXiv](https://img.shields.io/badge/arXiv-2506.01084-b31b1b.svg)](https://arxiv.org/abs/2506.01084)
+[![Hugging Face](https://img.shields.io/badge/HuggingFace-Zip2Zip-yellow.svg)](https://huggingface.co/collections/epfl-dlab/zip2zip-models-6852ec90f3dacc02aa6a0dca)
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+
+zip2zip enables inference-time adaptive token vocabularies for large language models (LLMs). It allows vocabularies to be dynamically augmented at inference time, leading to reduced decoding steps and faster inference.
+
+<p align = 'center'>
+  <img alt="zip2zip decoding" src='assets/zip2zip-decoding.gif' width='75%'/>
+</p>
 
 ## Features
 
@@ -15,12 +24,36 @@ zip2zip is a framework for inference-time adaptive token vocabularies for LLMs. 
 You can install zip2zip using pip:
 
 ```bash
-pip install git+https://github.com/epfl-dlab/zip2zip-internal-testing.git
+pip install zip2zip
 ```
 
 ## Usage
 
-### Generate text with a pretrained model
+### Same API as Hugging Face
+
+| zip2zip | Corresponding HF class |
+|---------|-------------------------|
+| Zip2ZipModel | AutoModelForCausalLM |
+| Zip2ZipTokenizer | AutoTokenizer |
+| Zip2ZipConfig | AutoConfig |
+| Zip2ZipModel.from_pretrained | AutoModelForCausalLM.from_pretrained |
+| Zip2ZipTokenizer.from_pretrained | AutoTokenizer.from_pretrained |
+| Zip2ZipConfig.from_pretrained | AutoConfig.from_pretrained |
+
+
+
+### Pretrained model weights
+
+| Size | Model | HF Hub |
+|------|-------|--------|
+| 3.8B | Phi-3.5-mini-instruct-v0.1 | [epfl-dlab/zip2zip-Phi-3.5-mini-instruct-v0.1](https://huggingface.co/epfl-dlab/zip2zip-Phi-3.5-mini-instruct-v0.1) |
+| 14B | Llama-3.1-8B-Instruct-v0.1 | [epfl-dlab/zip2zip-Phi-3-medium-instruct-v0.1](https://huggingface.co/epfl-dlab/zip2zip-Phi-3-medium-instruct-v0.1) |
+| ... | ... | [epfl-dlab/zip2zip-models](https://huggingface.co/collections/epfl-dlab/zip2zip-models-6852ec90f3dacc02aa6a0dca) |
+
+
+
+
+### Run a pretrained model
 
 ```python
 import torch
@@ -55,39 +88,6 @@ model = Zip2ZipModel.from_pretrained(pretrained_model_url, device_map="auto", lo
 
 We provide some examples in the `examples` folder.
 
-### Advanced Usage
-
-The framework supports various configurations for compression and encoding:
-
-```python
-from zip2zip.config import CompressionConfig, EncoderConfig
-
-# Custom compression configuration
-compression_config = CompressionConfig(
-    max_codebook_size=8192,
-    max_subtokens=4,
-    disabled_ids=set()
-)
-
-# Custom encoder configuration
-encoder_config = EncoderConfig(
-    # Add your encoder-specific configuration here
-)
-
-# Create custom config
-config = Zip2ZipConfig(
-    base_model_name_or_path="your-base-model",
-    compression=compression_config,
-    encoder=encoder_config
-)
-```
-
-## Pretrained models
-
-We provide pretrained models for zip2zip at [Hugging Face](https://huggingface.co/collections/epfl-dlab/zip2zip-models-6852ec90f3dacc02aa6a0dca), including:
-
-- `epfl-dlab/zip2zip-Phi-3.5-mini-instruct-v0.1`: Phi-3.5-mini-instruct-v0.1
-- `epfl-dlab/zip2zip-Llama-3.1-8B-Instruct-v0.1`: Llama-3.1-8B-Instruct-v0.1
 
 ## Evaluation
 
@@ -109,4 +109,14 @@ python bench/run_lm_eval.py
 
 ## Citation
 
-[Add citation information here]
+```bibtex
+@misc{geng2025zip2zipinferencetimeadaptivevocabularies,
+      title={zip2zip: Inference-Time Adaptive Vocabularies for Language Models via Token Compression},
+      author={Saibo Geng and Nathan Ranchin and Yunzhen yao and Maxime Peyrard and Chris Wendler and Michael Gastpar and Robert West},
+      year={2025},
+      eprint={2506.01084},
+      archivePrefix={arXiv},
+      primaryClass={cs.CL},
+      url={https://arxiv.org/abs/2506.01084},
+}
+```

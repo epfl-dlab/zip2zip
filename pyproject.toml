@@ -9,7 +9,7 @@ description = "Inference-time adaptive token vocabularies for LLMs"
 authors = [{ name = "EPFL-DLAB", email = "saibo.geng@epfl.ch" }]
 license = { file = "LICENSE" }
 readme = "README.md"
-requires-python = ">=3.8"
+requires-python = ">=3.10"
 
 dependencies = [
     "zip2zip-compression>=0.3.3",
