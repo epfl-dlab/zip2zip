@@ -9,11 +9,7 @@ from typing import List, Union, Optional
 from transformers.utils import PushToHubMixin
 from transformers import PreTrainedTokenizerBase, AutoTokenizer, BatchEncoding
 from zip2zip.visual import ColoredToken, colorise_lzwtokens, ColorfulTokenizer
-from zip2zip_compression import (
-    Codebook,
-    CodebookManager as RustCodebookManager,
-    CodebookConfig,
-)
+from zip2zip_compression import Codebook
 from zip2zip.config import Zip2ZipConfig
 
 
