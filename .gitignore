@@ -3,7 +3,7 @@ eleutherai_eval/
 __pycache__/
 *.py[cod]
 *$py.class
-
+out
 # C extensions
 *.so
 

@@ -12,7 +12,6 @@ class ColoredToken:
     END_COLOR: str = "\033[0m"  # Reset color
 
     def __str__(self):
-
         return f"{self.color}{self.token_ids}{self.END_COLOR}"
 
 
@@ -131,14 +130,14 @@ def colorise_lzw_tokens_random(
     """
     import random
 
-    color = lambda e: f"\033[38;5;{random.randint(0, 255)}m"
+    color = lambda _: f"\033[38;5;{random.randint(0, 255)}m"
     colored_token_groups = []
     for token_id in lzw_token_ids:
         if token_id in codebook:
             base_ids = codebook[token_id]
         else:
             base_ids = [token_id]
-        colored_token_groups.append(ColoredToken(token_ids=base_ids, color=color(i)))
+        colored_token_groups.append(ColoredToken(token_ids=base_ids, color=color()))
     return colored_token_groups
 
 

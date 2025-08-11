@@ -24,7 +24,7 @@ class HyperLinear(nn.Linear):
     ) -> None:
         super().__init__(in_features, out_features, bias, device, dtype)
         self.config = config
-        self.encoder = encoder
+        self.encoder_fn = encoder.get_encoder_fn()
         self.initial_vocab_size = initial_vocab_size
         self.codebook_manager = codebook_manager
 
@@ -32,7 +32,7 @@ class HyperLinear(nn.Linear):
         base_logits = super().forward(x)
 
         hyper_linear_weights = self.codebook_manager.get_hyper_linear_weights(
-            self.weight, self.encoder
+            self.weight, self.encoder_fn
         )
 
         hyper_logits = torch.bmm(x, hyper_linear_weights.transpose(-2, -1))

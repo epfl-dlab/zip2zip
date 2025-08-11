@@ -6,20 +6,21 @@ import inspect
 import logging
 from torch import nn
 from typing import Tuple, Optional, Union
-from peft import PeftModel, PeftMixedModel
 from huggingface_hub import hf_hub_download
 from transformers.utils import PushToHubMixin
 from safetensors.torch import save_file, load_file
 from transformers.generation.utils import GenerateOutput
 from transformers import PreTrainedModel, AutoModelForCausalLM
+from peft import PeftModel, PeftMixedModel, PeftConfig, get_peft_model
+from accelerate import init_empty_weights, load_checkpoint_and_dispatch
 
 from zip2zip.config import Zip2ZipConfig
 from zip2zip.nn.linear import HyperLinear
 from zip2zip.codebook import CodebookManager
 from zip2zip.nn.embedding import HyperEmbedding
 from zip2zip.nn.encoders.base import BaseEncoder
-from zip2zip.nn.encoders.config import EncoderConfigType
 from zip2zip.constants import SAFETENSORS_ENCODERS_NAME
+from zip2zip.nn.encoders.config import EncoderConfigType
 
 
 logger = logging.getLogger(__name__)
@@ -30,6 +31,7 @@ class Zip2ZipModel(PushToHubMixin, nn.Module):
         self,
         config: Zip2ZipConfig[EncoderConfigType],
         base_model: Optional[PreTrainedModel] = None,
+        peft_config: Optional[PeftConfig] = None,
         **kwargs,
     ) -> None:
         super().__init__()
@@ -39,20 +41,17 @@ class Zip2ZipModel(PushToHubMixin, nn.Module):
             base_model = AutoModelForCausalLM.from_pretrained(
                 config.base_model_name_or_path, **kwargs
             )
-
-        # TODO, needs to create peft model here, this would probably require to expand the Zip2ZipConfig class
+        # TODO, should we keep the peft config as part of zip2zip config? how do we handle data, metadata separation?
+        if peft_config is not None:
+            base_model = get_peft_model(base_model, peft_config)
 
         self.base_model = base_model
 
-        self.dtype = base_model.dtype
-        self.device = base_model.device
         # in case of embedding model(as opposed to generation model), we need to clear the cache after forward, otherwise the cache will cumulate
         self.clear_zip2zip_cache_after_forward = False
 
-        self.codebook_manager = CodebookManager.from_config(
-            config, self.dtype, self.device
-        )
-        self.input_encoder, self.output_encoder = self.get_encoders()
+        self.codebook_manager = CodebookManager.from_config(config)
+        self.input_encoder, self.output_encoder = self.build_encoders()
         self.set_hyper_modules()
 
     def set_hyper_modules(self) -> None:
@@ -72,23 +71,44 @@ class Zip2ZipModel(PushToHubMixin, nn.Module):
                 HyperLinear.from_linear(
                     model_output_embeddings,
                     self.zip2zip_config,
-                    self.output_encoder,
+                    self.output_encoder or self.input_encoder,
                     self.codebook_manager,
                 )
             )
 
-    def get_encoders(self) -> Tuple[BaseEncoder, BaseEncoder]:
-        input_encoder = BaseEncoder.from_config(
-            self.zip2zip_config.encoder, self.zip2zip_config.compression
-        ).to(self.device, self.dtype)
-
-        if self.zip2zip_config.encoder.tie_encoders:
-            return input_encoder, input_encoder
-        else:
-            output_encoder = BaseEncoder.from_config(
+    def build_encoders(self) -> Tuple[BaseEncoder, BaseEncoder]:
+        # Create encoders with proper device and dtype handling
+        with torch.device("meta"):
+            input_encoder = BaseEncoder.from_config(
                 self.zip2zip_config.encoder, self.zip2zip_config.compression
-            ).to(self.device, self.dtype)
-            return input_encoder, output_encoder
+            )
+
+            if self.zip2zip_config.encoder.tie_encoders:
+                output_encoder = None
+            else:
+                output_encoder = BaseEncoder.from_config(
+                    self.zip2zip_config.encoder, self.zip2zip_config.compression
+                )
+
+        embedding_layer_device = self.base_model.get_input_embeddings().weight.device
+        embedding_layer_dtype = self.base_model.get_input_embeddings().weight.dtype
+
+        # Move encoders to the correct device and dtype
+        input_encoder.to_empty(device=embedding_layer_device).to(
+            dtype=embedding_layer_dtype
+        )
+        if output_encoder is not None:
+            output_embedding_layer_device = (
+                self.base_model.get_output_embeddings().weight.device
+            )
+            output_embedding_layer_dtype = (
+                self.base_model.get_output_embeddings().weight.dtype
+            )
+            output_encoder.to_empty(device=output_embedding_layer_device).to(
+                dtype=output_embedding_layer_dtype
+            )
+
+        return input_encoder, output_encoder
 
     def load_pretrained_hyper_encoders(
         self,
@@ -147,13 +167,25 @@ class Zip2ZipModel(PushToHubMixin, nn.Module):
             return getattr(self.base_model, name)
 
     def forward(self, *args, **kwargs) -> torch.Tensor:
-        # here we need to handle the train case where we pass the codebooks as tensors
-        # we should do that the same as the labels (to be compatible with the Trainer class)
+        is_training = kwargs.get("labels", None) is not None
 
         if self.clear_zip2zip_cache_after_forward:
             self.codebook_manager.reset()
 
-        return self.base_model.forward(*args, **kwargs)
+        if is_training:
+            self.base_model.config.vocab_size += (
+                self.zip2zip_config.compression.max_codebook_size
+            )
+
+        output = self.base_model.forward(*args, **kwargs)
+
+        if is_training:
+            self.base_model.config.vocab_size -= (
+                self.zip2zip_config.compression.max_codebook_size
+            )
+            self.codebook_manager.reset()
+
+        return output
 
     def generate(self, *args, **kwargs) -> Union[GenerateOutput, torch.LongTensor]:
         input_ids = kwargs["input_ids"]
@@ -218,5 +250,42 @@ class Zip2ZipModel(PushToHubMixin, nn.Module):
             logger.info("[Zip2Zip] No PEFT adapter found — proceeding with base model.")
 
         model = cls(config, base_model, **kwargs)
-        model.load_pretrained_hyper_encoders(pretrained_model_name_or_path, **kwargs)
+
+        try:
+            model.load_pretrained_hyper_encoders(
+                pretrained_model_name_or_path, **kwargs
+            )
+        except Exception as e:
+            logger.info(
+                "[Zip2Zip] No hyper encoders found — proceeding with base model."
+            )
+
+        return model
+
+    @classmethod
+    def from_checkpoint(
+        cls,
+        checkpoint_path: str,
+        device_map: Optional[Union[str, dict]] = "auto",
+        dtype: Optional[torch.dtype] = torch.bfloat16,
+        **kwargs,
+    ) -> Zip2ZipModel:
+        if not os.path.exists(checkpoint_path):
+            raise FileNotFoundError(f"Checkpoint file not found: {checkpoint_path}")
+
+        config = Zip2ZipConfig.from_pretrained(checkpoint_path, **kwargs)
+
+        # create the model with empty weights
+        with init_empty_weights():
+            model = cls(config, **kwargs)
+
+        # load the checkpoint and dispatch the model to the correct device
+        model = load_checkpoint_and_dispatch(
+            model,
+            checkpoint_path,
+            device_map=device_map,
+            dtype=dtype,
+            **kwargs,
+        )
+
         return model

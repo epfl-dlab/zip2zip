@@ -22,8 +22,7 @@ class BaseEncoder(nn.Module, ABC, Generic[EncoderConfigType]):
     @abstractmethod
     def forward(
         self, codebook: torch.Tensor, embeddings: torch.Tensor, pad_token_id: int
-    ) -> torch.Tensor:
-        ...
+    ) -> torch.Tensor: ...
 
     @classmethod
     def from_config(

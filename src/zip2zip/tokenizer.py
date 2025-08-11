@@ -3,14 +3,14 @@ from __future__ import annotations
 import torch
 import numpy as np
 from typing import Optional, Tuple
-from zip2zip.utils import get_base_vocab_size
-from zip2zip_compression import LZWCompressor
 from typing import List, Union, Optional
 from transformers.utils import PushToHubMixin
 from transformers import PreTrainedTokenizerBase, AutoTokenizer, BatchEncoding
-from zip2zip.visual import ColoredToken, colorise_lzwtokens, ColorfulTokenizer
 from zip2zip_compression import Codebook
 from zip2zip.config import Zip2ZipConfig
+from zip2zip.utils import get_base_vocab_size
+from zip2zip_compression import LZWCompressor
+from zip2zip.visual import ColoredToken, colorise_lzwtokens, ColorfulTokenizer
 
 
 class Zip2ZipTokenizer(PushToHubMixin):

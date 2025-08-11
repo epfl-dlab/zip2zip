@@ -14,7 +14,7 @@ model_name = "epfl-dlab/zip2zip-Phi-3.5-mini-instruct-v0.1"
 
 model = Zip2ZipModel.from_pretrained(
     model_name,
-    device_map="cuda",
+    device_map="auto",
     torch_dtype=PLATFORM_BEST_DTYPE,
 ).eval()
 
@@ -51,7 +51,7 @@ prompt3 = tokenizer.apply_chat_template(
 
 inputs = tokenizer(
     [prompt1, prompt2, prompt3], return_tensors="pt", padding="longest"
-).to("cuda")
+).to(model.device)
 
 
 outputs = model.generate(

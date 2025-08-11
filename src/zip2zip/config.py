@@ -4,6 +4,7 @@ import os
 import json
 import inspect
 from transformers.utils import PushToHubMixin
+from transformers import PreTrainedTokenizerBase
 from dataclasses import dataclass, asdict, field
 from typing import Generic, Optional, List, Dict
 from huggingface_hub import hf_hub_download, ModelCard, ModelCardData
@@ -14,6 +15,7 @@ from zip2zip.nn.encoders.config import (
     EncoderConfigType,
     ENCODER_CONFIG_MAPPING,
 )
+from zip2zip.utils import get_base_vocab_size
 
 
 @dataclass
@@ -30,6 +32,42 @@ class CompressionConfig:
     disabled_ids: Optional[List[int]] = field(
         default=None, metadata={"help": "The disabled ids"}
     )
+
+    def __post_init__(self):
+        if self.disabled_ids is None or len(self.disabled_ids) == 0:
+            raise ValueError(
+                "disabled_ids should at least contain special tokens, try `disabled_ids = list(tokenizer.get_added_vocab().values())`"
+            )
+        if len(self.disabled_ids) < len(set(self.disabled_ids)):
+            raise ValueError("disabled_ids should not contain duplicate values")
+
+    @classmethod
+    def from_tokenizer(
+        cls,
+        tokenizer: PreTrainedTokenizerBase,
+        max_codebook_size: int = None,
+        max_subtokens: int = None,
+    ) -> "CompressionConfig":
+        """Create a CompressionConfig with disabled_ids automatically inferred from tokenizer.
+
+        Args:
+            tokenizer: The tokenizer to extract special tokens from
+            initial_vocab_size: The initial vocabulary size
+            max_codebook_size: The maximum codebook size
+            max_subtokens: The maximum number of subtokens
+
+        Returns:
+            CompressionConfig with disabled_ids set to tokenizer's added vocab values
+        """
+        disabled_ids = list(tokenizer.get_added_vocab().values())
+        initial_vocab_size = get_base_vocab_size(tokenizer)
+
+        return cls(
+            initial_vocab_size=initial_vocab_size,
+            max_codebook_size=max_codebook_size,
+            max_subtokens=max_subtokens,
+            disabled_ids=disabled_ids,
+        )
 
 
 @dataclass
@@ -121,8 +159,10 @@ class Zip2ZipConfig(PushToHubMixin, Generic[EncoderConfigType]):
 
         hf_hub_download_kwargs, class_kwargs, _ = cls._split_kwargs(kwargs)
 
+        # if the config is local, load it from the local path
         if os.path.isfile(os.path.join(path, CONFIG_NAME)):
             config_file = os.path.join(path, CONFIG_NAME)
+        # otherwise, download it from the hub
         else:
             try:
                 config_file = hf_hub_download(

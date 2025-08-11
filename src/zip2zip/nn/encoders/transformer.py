@@ -34,8 +34,8 @@ class Layer(nn.Module):
         self.post_mlp_layernorm = nn.LayerNorm(hidden_size)
 
     def __call__(self, x: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
-        x = self.post_attention_layernorm(x + self.attention(x, mask))
-        x = self.post_mlp_layernorm(x + self.mlp(x))
+        x = self.post_attention_layernorm(x + self.attention(x, mask)).to(x.dtype)
+        x = self.post_mlp_layernorm(x + self.mlp(x)).to(x.dtype)
         return x
 
 
