@@ -13,6 +13,16 @@ from lm_eval.models.huggingface import HFLM
 from zip2zip.tokenizer import Zip2ZipTokenizer
 from zip2zip.model import Zip2ZipModel
 
+# Global debug flag - set to True to enable debug prints
+DEBUG = False
+
+
+def debug_print(*args, **kwargs):
+    """Print debug messages only when DEBUG is True."""
+    if DEBUG:
+        print(*args, **kwargs)
+
+
 # verify that we are using the zip2zip fork of lm-evaluation-harness
 if getattr(lm_eval, "__fork__", None) != "epfl-dlab/zip2zip_lm_eval":
     raise ValueError(
@@ -52,12 +62,6 @@ class Zip2ZipForLMEval(TemplateLM):
     def generate_until(self, *args, **kwargs):
         return self.zip2zip_model_for_lmeval.generate_until(*args, **kwargs)
 
-    # for perplexity
-    @torch.no_grad()
-    def loglikelihood_rolling(self, *args, **kwargs):
-        self.zip2zip_model_for_lmeval.model.clear_zip2zip_cache_after_forward = True
-        return self.zip2zip_model_for_lmeval.loglikelihood_rolling(*args, **kwargs)
-
     # for discriminative tasks
     @torch.no_grad()
     def _loglikelihood_tokens(self, *args, **kwargs):
@@ -75,6 +79,7 @@ class Zip2ZipForLMEval(TemplateLM):
     def apply_chat_template(self, *args, **kwargs):
         return self.zip2zip_model_for_lmeval.apply_chat_template(*args, **kwargs)
 
+    # for perplexity
     @torch.no_grad()
     def loglikelihood_rolling(
         self, requests: List[Instance], _: bool = False
@@ -131,7 +136,7 @@ class Zip2ZipForLMEval(TemplateLM):
                 ).squeeze(-1)
 
                 total_log_prob += chunk_log_probs.sum().item()
-                print(chunk_log_probs.sum().item())
+                debug_print(f"chunk_log_probs: {chunk_log_probs.sum().item()}")
 
             outputs.append(total_log_prob)
 
@@ -160,59 +165,3 @@ def save_lm_eval_results_to_yaml(results: Dict[str, Any], filepath: str) -> None
         print(f"Successfully saved results to {filepath}")
     except Exception as e:
         print(f"Error saving YAML: {e}")
-
-
-if __name__ == "__main__":
-    from lm_eval.evaluator import simple_evaluate
-
-    model_name = "epfl-dlab/zip2zip-Phi-3.5-mini-instruct-v0.1"
-
-    model = Zip2ZipModel.from_pretrained(
-        model_name, device_map="cuda", torch_dtype=torch.float16
-    )
-    tokenizer = Zip2ZipTokenizer.from_pretrained(model_name)
-
-    model = Zip2ZipForLMEval(
-        model,
-        tokenizer,
-        max_length=1024,
-        batch_size=5,
-    )
-
-    model.model.eval()
-
-    # disable all parameters in the model
-    for param in model.model.parameters():
-        param.requires_grad = False
-
-    results = simple_evaluate(
-        model,
-        tasks="paloma_mc4",
-        limit=20,
-        num_fewshot=2,
-        apply_chat_template=True,
-        fewshot_as_multiturn=True,
-        confirm_run_unsafe_code=True,
-    )
-
-    if results is not None:
-        print(make_table(results))
-
-    if True:
-        current_time = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-        session_dir = os.path.join("eleutherai_eval", current_time)
-        os.makedirs(session_dir, exist_ok=False)
-        samples = results["samples"]
-        metadata = {k: v for k, v in results.items() if k != "samples"}
-
-        for task_name, task_results in samples.items():
-            save_lm_eval_results_to_yaml(
-                results=task_results,
-                filepath=os.path.join(session_dir, f"{task_name}.yaml"),
-            )
-
-        # save the metadata
-        save_lm_eval_results_to_yaml(
-            results=metadata,
-            filepath=os.path.join(session_dir, f"metadata.yaml"),
-        )
