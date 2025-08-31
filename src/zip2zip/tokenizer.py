@@ -130,12 +130,25 @@ class Zip2ZipTokenizer(PushToHubMixin):
         cls,
         pretrained_model_name_or_path: str,
         subfolder: Optional[str] = None,
+        max_codebook_size: Optional[int] = None,
+        max_subtokens: Optional[int] = None,
         **kwargs,
     ) -> Zip2ZipTokenizer:
         config = Zip2ZipConfig.from_pretrained(
             pretrained_model_name_or_path,
             subfolder=subfolder,
             **kwargs,
+        )
+
+        config.compression.max_codebook_size = (
+            max_codebook_size
+            if max_codebook_size is not None
+            else config.compression.max_codebook_size
+        )
+        config.compression.max_subtokens = (
+            max_subtokens
+            if max_subtokens is not None
+            else config.compression.max_subtokens
         )
 
         return cls(config)
