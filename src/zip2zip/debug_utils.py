@@ -1,3 +1,4 @@
+import hashlib
 from safetensors.torch import load_file
 import torch
 import torch.nn as nn

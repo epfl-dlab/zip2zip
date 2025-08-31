@@ -1,32 +1,17 @@
 import os
-from transformers import AutoTokenizer
 from zip2zip import (
     Zip2ZipModel,
     Zip2ZipTokenizer,
     Zip2ZipConfig,
-    EncoderType,
-    TransformerEncoderConfig,
-    CompressionConfig,
-)
-from zip2zip.utils import (
-    setup_seed,
-    print_trainable_parameters,
-    print_trainable_modules,
 )
 
 import torch
-from datasets import load_dataset
-from accelerate import Accelerator
-from safetensors.torch import load_file
-from trl import SFTConfig, SFTTrainer
 from peft import LoraConfig, TaskType
-import transformers
-from zip2zip.utils import compare_state_dicts
 
 OUTPUT_DIR = "out"
 
 checkpoint_path = os.path.join(
-    OUTPUT_DIR, "zip2zip-train-FT-M3-L2-S1024", "checkpoint-16000"
+    OUTPUT_DIR, "zip2zip-train-FT-M3-L2-S1024", "checkpoint-36000"
 )
 
 
