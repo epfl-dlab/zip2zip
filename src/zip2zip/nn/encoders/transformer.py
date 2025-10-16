@@ -18,7 +18,7 @@ class MLP(nn.Module):
         self.fc1 = nn.Linear(hidden_size, intermediate_size, bias=False)
         self.fc2 = nn.Linear(intermediate_size, hidden_size, bias=False)
 
-    def __call__(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.fc2(F.gelu(self.fc1(x)))
 
 
@@ -33,7 +33,7 @@ class Layer(nn.Module):
         self.post_attention_layernorm = nn.LayerNorm(hidden_size)
         self.post_mlp_layernorm = nn.LayerNorm(hidden_size)
 
-    def __call__(self, x: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
         x = self.post_attention_layernorm(x + self.attention(x, mask)).to(x.dtype)
         x = self.post_mlp_layernorm(x + self.mlp(x)).to(x.dtype)
         return x
