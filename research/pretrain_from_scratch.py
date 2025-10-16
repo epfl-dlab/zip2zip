@@ -34,23 +34,29 @@ transformers.logging.set_verbosity_info()
 # Set random seed for reproducible weight initialization
 setup_seed(42, strict_deterministic=False)
 
-train_dataset = load_dataset(
-    "epfl-dlab/zip2zip-1B", name="default", split="train"
-).shuffle(seed=42).take(1000)
+
+train_dataset = (
+    load_dataset("epfl-dlab/zip2zip-1B", name="default", split="train")
+    .shuffle(seed=42)
+    .filter(lambda example, indice: indice % 50 == 0, with_indices=True)
+)
 eval_dataset = (
     load_dataset("epfl-dlab/zip2zip-1B", name="default", split="validation")
     .shuffle(seed=42)
-    .take(250)
+    .take(100)
 )
 
 base_model_arch = "llama"
-pretrained_model_name = "JackFram/llama-160m" # to load pretrained config and tokenizer
+pretrained_model_name = "JackFram/llama-160m"  # to load pretrained config and tokenizer
 
 max_context_length = 512
+
+degenerate = False
 
 # Dynamic import based on architecture
 if base_model_arch == "llama":
     from transformers import LlamaConfig, LlamaForCausalLM
+
     base_model_class = LlamaForCausalLM
     base_model_config_class = LlamaConfig
 else:
@@ -74,7 +80,7 @@ config = Zip2ZipConfig(
     compression=CompressionConfig.from_tokenizer(
         tokenizer=AutoTokenizer.from_pretrained(pretrained_model_name),
         max_codebook_size=max_context_length,
-        max_subtokens=4,
+        max_subtokens=4 if not degenerate else 1,
     ),
 )
 
