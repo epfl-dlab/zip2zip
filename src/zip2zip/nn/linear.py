@@ -54,19 +54,18 @@ class HyperLinear(nn.Linear):
         encoder: BaseEncoder,
         codebook_manager: CodebookManager,
     ) -> HyperLinear:
-        with torch.device("meta"):
-            hyper_linear = cls(
-                config,
-                encoder,
-                linear.in_features,
-                linear.out_features,
-                linear.bias is not None,
-                linear.weight.device,
-                linear.weight.dtype,
-                config.compression.initial_vocab_size,
-                codebook_manager,
-            )
-        hyper_linear.to_empty(device=linear.weight.device)
+        hyper_linear = cls(
+            config,
+            encoder,
+            linear.in_features,
+            linear.out_features,
+            linear.bias is not None,
+            linear.weight.device,
+            linear.weight.dtype,
+            config.compression.initial_vocab_size,
+            codebook_manager,
+        )
+        hyper_linear.to(device=linear.weight.device)
         hyper_linear.weight = linear.weight
         if linear.bias is not None:
             hyper_linear.bias = linear.bias

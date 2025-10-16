@@ -60,18 +60,17 @@ class HyperEmbedding(nn.Embedding):
         encoder: BaseEncoder,
         codebook_manager: CodebookManager,
     ) -> HyperEmbedding:
-        with torch.device("meta"):
-            hyper_embedding = cls(
-                config,
-                encoder,
-                embedding.num_embeddings,
-                embedding.embedding_dim,
-                embedding.padding_idx,
-                embedding.weight.device,
-                embedding.weight.dtype,
-                config.compression.initial_vocab_size,
-                codebook_manager,
-            )
-        hyper_embedding.to_empty(device=embedding.weight.device)
+        hyper_embedding = cls(
+            config,
+            encoder,
+            embedding.num_embeddings,
+            embedding.embedding_dim,
+            embedding.padding_idx,
+            embedding.weight.device,
+            embedding.weight.dtype,
+            config.compression.initial_vocab_size,
+            codebook_manager,
+        )
+        hyper_embedding.to(device=embedding.weight.device)
         hyper_embedding.weight = embedding.weight
         return hyper_embedding

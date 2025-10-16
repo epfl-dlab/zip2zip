@@ -78,25 +78,22 @@ class Zip2ZipModel(PushToHubMixin, nn.Module):
 
     def build_encoders(self) -> Tuple[BaseEncoder, BaseEncoder]:
         # Create encoders with proper device and dtype handling
-        with torch.device("meta"):
-            input_encoder = BaseEncoder.from_config(
+        input_encoder = BaseEncoder.from_config(
+            self.zip2zip_config.encoder, self.zip2zip_config.compression
+        )
+
+        if self.zip2zip_config.encoder.tie_encoders:
+            output_encoder = None
+        else:
+            output_encoder = BaseEncoder.from_config(
                 self.zip2zip_config.encoder, self.zip2zip_config.compression
             )
-
-            if self.zip2zip_config.encoder.tie_encoders:
-                output_encoder = None
-            else:
-                output_encoder = BaseEncoder.from_config(
-                    self.zip2zip_config.encoder, self.zip2zip_config.compression
-                )
 
         embedding_layer_device = self.base_model.get_input_embeddings().weight.device
         embedding_layer_dtype = self.base_model.get_input_embeddings().weight.dtype
 
         # Move encoders to the correct device and dtype
-        input_encoder.to_empty(device=embedding_layer_device).to(
-            dtype=embedding_layer_dtype
-        )
+        input_encoder.to(device=embedding_layer_device).to(dtype=embedding_layer_dtype)
         if output_encoder is not None:
             output_embedding_layer_device = (
                 self.base_model.get_output_embeddings().weight.device
@@ -104,7 +101,7 @@ class Zip2ZipModel(PushToHubMixin, nn.Module):
             output_embedding_layer_dtype = (
                 self.base_model.get_output_embeddings().weight.dtype
             )
-            output_encoder.to_empty(device=output_embedding_layer_device).to(
+            output_encoder.to(device=output_embedding_layer_device).to(
                 dtype=output_embedding_layer_dtype
             )
 
