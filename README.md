@@ -8,8 +8,8 @@
 Create a new conda environment with the following command:
 
 ```batch
-conda create -n zip2zip python=3.10
-conda activate zip2zip
+conda create -n ozz python=3.10
+conda activate ozz
 ```
 
 Then install the required packages with the following command:
