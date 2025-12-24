@@ -1,0 +1,18 @@
+{
+    "config": null,
+    "dataset": [
+        "AI-MO/NuminaMath-1.5"
+    ],
+    "subset": "default",
+    "split": "train",
+    "text_column": "text",
+    "tokenizer": [
+        "microsoft/Phi-3.5-mini-instruct"
+    ],
+    "limit": 200,
+    "max_seq_length": 16000,
+    "extra_vocab_size": 16000,
+    "max_subtokens": 8000,
+    "individual": false,
+    "output_path": "compression_plots/phi-3.5-32K/math"
+}

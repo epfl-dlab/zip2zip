@@ -1,0 +1,24 @@
+[package]
+name = "compression"
+version = "0.1.1"
+edition = "2021"
+
+[lib]
+name = "compression"
+crate-type = ["cdylib", "rlib"]
+
+[[bin]]
+name = "compression_cli"
+path = "src/main.rs"
+
+[dependencies]
+bumpalo = { version = "3.17.0", features = ["collections"] }
+hashbrown = "0.14.0"
+itertools = "0.14.0"
+pyo3 = { version = "0.20.0", features = ["extension-module", "hashbrown"] }
+rand = "0.8"
+rayon = "1.10.0"
+clap = { version = "4", features = ["derive"] } # CLI argument parsing
+
+[profile.release]
+debug = true

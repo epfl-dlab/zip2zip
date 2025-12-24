@@ -1,0 +1,24 @@
+{
+    "config": null,
+    "dataset": "epfl-dlab/zip2zip-1B",
+    "subset": [
+        "code",
+        "knowledge",
+        "math",
+        "chat",
+        "multilingual",
+        "default"
+    ],
+    "split": "train",
+    "text_column": "text",
+    "tokenizer": [
+        "microsoft/Phi-3.5-mini-instruct"
+    ],
+    "limit": 50,
+    "max_seq_length": 6000,
+    "extra_vocab_size": 6000,
+    "max_subtokens": 8000,
+    "individual": false,
+    "output_path": "plots/compression_plots/phi-3.5-32K/multi-domain",
+    "log_x_scale": false
+}

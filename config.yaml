@@ -1,0 +1,59 @@
+per_device_batch_size: 4
+seq_length: 1024
+total_batch_size: 1_048_576 # 1024 * 1024
+pretrained_model_name_or_path: "microsoft/Phi-3.5-mini-instruct"
+pretrained_tokenizer_name_or_path: "microsoft/Phi-3.5-mini-instruct"
+extra_vocab_size: 1024
+initial_vocab_size: 32011
+compile_model: true
+max_lr: 3.0e-4
+min_lr: 1.0e-5
+max_steps: 200 #
+val_steps: 1
+val_interval: 5
+checkpoint_interval: 20
+checkpoint_dir: "checkpoints"
+upload_checkpoints_repo_id: "epfl-dlab/online-zip2zip-2"
+schedule: "cosine"
+mask_first_occurrence: false
+float8_base_model: true
+
+data:
+  path: "dataset"
+  dataset_path: "devngho/the-stack-llm-annotations-v2"
+  dataset_name: "all"
+  text_column: "text"
+  shuffle: true
+
+lora:
+  rank: 32
+  alpha: 32
+  target_modules:
+    - "qkv_proj"
+    - "o_proj"
+    - "gate_proj"
+    - "down_proj"
+    - "up_proj"
+  init_lora_weight: "default"
+
+compression:
+  compressor_function_name: "lzw"
+  max_subtokens: 4
+
+embedding_encoder:
+  embedding_size: 3072
+  embedding_encoder_name: "attention"
+  tie_embedding_encoder: false
+  position_encoding: "learnable"
+  auto_encoder_loss_alpha: 0
+  unsafe_config:
+    hidden_size: 3072
+    num_hidden_layers: 2
+    intermediate_size: 3072
+    attn_implementation: "sdpa"
+
+wandb_config:
+  project: "online-zip2zip"
+  group: null
+  exp_name: "phi-3.5"
+  entity: "epfl-dlab"

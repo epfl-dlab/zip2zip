@@ -1,0 +1,21 @@
+{
+    "config": null,
+    "dataset": [
+        "epfl-dlab/zip2zip-1B"
+    ],
+    "subset": "default",
+    "split": "train",
+    "text_column": "text",
+    "tokenizer": [
+        "microsoft/Phi-3.5-mini-instruct",
+        "meta-llama/Llama-3.2-1B-Instruct",
+        "microsoft/Phi-4-mini-instruct",
+        "meta-llama/Llama-2-7b-hf"
+    ],
+    "limit": 200,
+    "max_seq_length": 16000,
+    "extra_vocab_size": 16000,
+    "max_subtokens": 8000,
+    "individual": false,
+    "output_path": "compression_plots/multi_tokenizer/zip2zip-1B"
+}

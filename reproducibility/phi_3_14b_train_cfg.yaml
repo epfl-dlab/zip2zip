@@ -1,0 +1,65 @@
+per_device_batch_size: 1
+seq_length: 1024
+total_batch_size: 32_768
+pretrained_model_name_or_path: "microsoft/Phi-3-medium-4k-instruct"
+pretrained_tokenizer_name_or_path: "microsoft/Phi-3-medium-4k-instruct"
+pretrained_adapter_path: null
+pretrained_hub_adapter_path:  null
+extra_vocab_size: 1024
+initial_vocab_size: 32011
+compile_model: true
+max_lr: 3.0e-4
+min_lr: 1.0e-5
+
+max_steps: 8_000 # change to 5_000
+val_steps: 10
+val_interval: 100
+checkpoint_interval: 500
+checkpoint_dir: "checkpoints"
+upload_checkpoints_repo_id: "epfl-dlab/online-zip2zip-2"
+schedule: "cosine"
+mask_first_occurrence: false
+float8_base_model: true
+disable_CLM: false
+# generation_prompt: "Once upon a time"
+
+data:
+  path: "dataset"
+  dataset_path: "epfl-dlab/zip2zip-1B"
+  dataset_name: "default"
+  text_column: "text"
+  shuffle: true
+
+lora:
+  rank: 16
+  alpha: 16
+  target_modules:
+    - "qkv_proj"
+    - "o_proj"
+    - "gate_proj"
+    - "down_proj"
+    - "up_proj"
+  init_lora_weight: "default"
+
+compression:
+  compressor_function_name: "lzw"
+  max_subtokens: 4
+
+embedding_encoder:
+  embedding_size: 5120
+  embedding_encoder_name: "transformer"
+  tie_embedding_encoder: false
+  position_encoding: "learnable"
+  auto_encoder_loss_alpha: 0
+  unsafe_config:
+    hidden_size: 5120
+    num_heads: 40
+    num_hidden_layers: 2
+    attn_implementation: "sdpa"
+    # use_cls_token: true
+
+wandb_config:
+  project: "online-zip2zip"
+  group: null
+  exp_name: "phi-3.5-medium"
+  entity: "epfl-dlab"
