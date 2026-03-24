@@ -85,7 +85,7 @@ class TransformerEncoder(BaseEncoder[TransformerEncoderConfig]):
         else:
             x = embeddings[codebook]
 
-        mask = codebook != pad_token_id
+        mask = (codebook != pad_token_id).to(device=x.device)
         mask = mask.unsqueeze(-1) * mask.unsqueeze(-2)
 
         for layer in self.layers:
