@@ -29,6 +29,7 @@ class SelfAttention(nn.Module):
         queries = self.q_proj(input_embeddings)
         keys = self.k_proj(input_embeddings)
         values = self.v_proj(input_embeddings)
+        attn_mask = attn_mask.to(device=queries.device)
 
         output = F.scaled_dot_product_attention(
             queries.view(B, M, self.num_heads, -1).transpose(1, 2).contiguous(),
