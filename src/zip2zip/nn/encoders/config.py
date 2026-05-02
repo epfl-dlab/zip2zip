@@ -8,6 +8,7 @@ from dataclasses import dataclass, field
 class EncoderType(str, Enum):
     ATTENTION = "attention"
     TRANSFORMER = "transformer"
+    HYPER = "res_latent_attn"
 
 
 @dataclass
@@ -50,7 +51,36 @@ class TransformerEncoderConfig(EncoderConfig):
     )
 
 
+@dataclass
+class ResLatentAttnConfig(EncoderConfig):
+    model_hidden_size: Optional[int] = field(
+        default=None,
+        metadata={"help": "Model embedding dim. If set and != hidden_size, proj_in/proj_out are added."},
+    )
+    num_hidden_layers: int = field(
+        default=None,
+        metadata={"help": "Number of transformer layers"},
+    )
+    intermediate_size: Optional[int] = field(
+        default=None,
+        metadata={"help": "FFN intermediate dim (default: 4 * hidden_size)"},
+    )
+    num_heads: int = field(
+        default=None,
+        metadata={"help": "Number of attention heads"},
+    )
+    causal: bool = field(
+        default=False,
+        metadata={"help": "If True, use causal attention + last-token pooling; else bidirectional + mean pooling"},
+    )
+    residual: bool = field(
+        default=True,
+        metadata={"help": "If True, add first base-token embedding to encoder output (residual warmup)"},
+    )
+
+
 ENCODER_CONFIG_MAPPING = {
     "attention": AttentionEncoderConfig,
     "transformer": TransformerEncoderConfig,
+    "res_latent_attn": ResLatentAttnConfig,
 }

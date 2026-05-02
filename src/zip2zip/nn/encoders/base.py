@@ -32,15 +32,18 @@ class BaseEncoder(nn.Module, ABC, Generic[EncoderConfigType]):
     ) -> BaseEncoder:
         from zip2zip.nn.encoders.attention import AttentionEncoder
         from zip2zip.nn.encoders.transformer import TransformerEncoder
+        from zip2zip.nn.encoders.res_latent_attn import ResLatentAttnEncoder
 
         from zip2zip.nn.encoders.config import (
             AttentionEncoderConfig,
             TransformerEncoderConfig,
+            ResLatentAttnConfig,
         )
 
         config2encoder_mapping = {
             AttentionEncoderConfig: AttentionEncoder,
             TransformerEncoderConfig: TransformerEncoder,
+            ResLatentAttnConfig: ResLatentAttnEncoder,
         }
 
         encoder_class = config2encoder_mapping[type(encoder_config)]
