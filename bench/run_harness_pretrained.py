@@ -5,6 +5,7 @@ import torch
 from zip2zip.model import Zip2ZipModel
 from zip2zip.tokenizer import Zip2ZipTokenizer
 from zip2zip.tools.harness import Zip2ZipForLMEval, save_lm_eval_results_to_yaml
+from transformers import AutoModelForCausalLM
 from lm_eval.utils import make_table
 
 
@@ -12,6 +13,8 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("model_path", type=str,
                         help="HF repo or local path to zip2zip model")
+    parser.add_argument("--revision", type=str, default=None,
+                        help="HF Hub branch/revision (e.g. 'hf')")
     parser.add_argument("--tasks", type=str, nargs="+",
                         default=["wikitext", "piqa", "winogrande", "gsm8k"])
     parser.add_argument("--max_subtokens", type=int, default=None)
@@ -27,12 +30,27 @@ def main():
     from lm_eval.evaluator import simple_evaluate
 
     dtype = getattr(torch, args.dtype)
+
+    config_kwargs = {}
+    if args.revision:
+        config_kwargs["revision"] = args.revision
+
+    from zip2zip.config import Zip2ZipConfig
+    config = Zip2ZipConfig.from_pretrained(args.model_path, **config_kwargs)
+    if args.max_subtokens is not None:
+        config.compression.max_subtokens = args.max_subtokens
+
     model = Zip2ZipModel.from_pretrained(
         args.model_path, torch_dtype=dtype, max_subtokens=args.max_subtokens,
+        base_model=AutoModelForCausalLM.from_pretrained(
+            config.base_model_name_or_path, torch_dtype=dtype,
+        ),
+        **config_kwargs,
     ).to("cuda").eval()
 
     tokenizer = Zip2ZipTokenizer.from_pretrained(
         args.model_path, max_subtokens=args.max_subtokens,
+        **config_kwargs,
     )
 
     model = Zip2ZipForLMEval(

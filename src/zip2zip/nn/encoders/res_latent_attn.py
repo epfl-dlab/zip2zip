@@ -42,19 +42,18 @@ class ResLatentAttnLayer(nn.Module):
         k = self.wk(x_norm).view(B, S, self.n_heads, self.head_dim).transpose(1, 2)
         v = self.wv(x_norm).view(B, S, self.n_heads, self.head_dim).transpose(1, 2)
 
-        attn_mask = mask.unsqueeze(1).unsqueeze(2).float()
-        attn_mask = attn_mask.masked_fill(attn_mask == 0, float("-inf"))
-        attn_mask = attn_mask.masked_fill(attn_mask == 1, 0.0)
+        attn_mask = mask.unsqueeze(1).unsqueeze(2)  # (B, 1, 1, S) bool
 
         if causal:
-            causal_mask = (
-                torch.triu(torch.full((S, S), float("-inf"), device=x.device), diagonal=1)
-                .unsqueeze(0)
-                .unsqueeze(0)
-            )
-            attn_mask = attn_mask + causal_mask
+            causal_mask = torch.tril(torch.ones(S, S, device=x.device, dtype=torch.bool))
+            attn_mask = attn_mask & causal_mask
 
-        attn_out = F.scaled_dot_product_attention(q, k, v, attn_mask=attn_mask)
+        with torch.nn.attention.sdpa_kernel([
+            torch.nn.attention.SDPBackend.MATH,
+            torch.nn.attention.SDPBackend.EFFICIENT_ATTENTION,
+            torch.nn.attention.SDPBackend.FLASH_ATTENTION,
+        ]):
+            attn_out = F.scaled_dot_product_attention(q, k, v, attn_mask=attn_mask)
         attn_out = attn_out.transpose(1, 2).contiguous().view(B, S, D)
         x = residual + self.wo(attn_out)
 
