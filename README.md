@@ -7,6 +7,10 @@
 
 zip2zip enables inference-time adaptive token vocabularies for large language models (LLMs). It allows vocabularies to be dynamically augmented at inference time, leading to reduced decoding steps and faster inference.
 
+## News
+
+- **2026-05-03**: Evaluation now works with standard [lm-evaluation-harness](https://github.com/EleutherAI/lm-evaluation-harness) (`pip install lm_eval`) — no custom fork needed.
+
 <p align = 'center'>
   <img alt="zip2zip decoding" src='assets/zip2zip-decoding.gif' width='75%'/>
 </p>
@@ -25,6 +29,18 @@ You can install zip2zip using pip:
 
 ```bash
 pip install zip2zip
+```
+
+With evaluation support:
+
+```bash
+pip install zip2zip[eval]
+```
+
+Or with the lm-eval extra:
+
+```bash
+pip install zip2zip[eval]
 ```
 
 ## Usage
@@ -93,16 +109,14 @@ We provide some examples in the `examples` folder.
 
 We provide a script to evaluate the performance of the model, compatible with [lm-evaluation-harness](https://github.com/EleutherAI/lm-evaluation-harness).
 
-To run the evaluation, you need to install the zip2zip fork of lm-evaluation-harness (the original one is not compatible with zip2zip).
-
 ```bash
-pip install git+https://github.com/epfl-dlab/zip2zip_lm_eval.git
+pip install lm_eval==0.4.9
 ```
 
 Then, you can run the evaluation:
 
 ```bash
-python bench/run_lm_eval.py
+python bench/run_harness_pretrained.py <model_path> --tasks hellaswag piqa winogrande --limit 100
 ```
 
 

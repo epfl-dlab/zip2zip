@@ -22,6 +22,9 @@ dependencies = [
     "pytest",
 ]
 
+[project.optional-dependencies]
+eval = ["lm_eval==0.4.9"]
+
 [project.urls]
 Homepage = "https://github.com/epfl-dlab/zip2zip"
 

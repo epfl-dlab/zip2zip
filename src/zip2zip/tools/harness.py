@@ -13,21 +13,126 @@ from lm_eval.models.huggingface import HFLM
 from zip2zip.tokenizer import Zip2ZipTokenizer
 from zip2zip.model import Zip2ZipModel
 
-# Global debug flag - set to True to enable debug prints
 DEBUG = False
 
 
 def debug_print(*args, **kwargs):
-    """Print debug messages only when DEBUG is True."""
     if DEBUG:
         print(*args, **kwargs)
 
 
-# verify that we are using the zip2zip fork of lm-evaluation-harness
-if getattr(lm_eval, "__fork__", None) != "epfl-dlab/zip2zip_lm_eval":
-    raise ValueError(
-        "You are not using the zip2zip fork of lm-evaluation-harness. Please uninstall it using `pip uninstall lm-eval` and install it using `pip install git+https://github.com/epfl-dlab/zip2zip_lm_eval.git`"
-    )
+def _patch_lm_eval():
+    """Monkey-patch lm-eval to support Zip2ZipTokenizer and LZW-compressed sequences.
+
+    Replaces 3 behaviors from the epfl-dlab/zip2zip_lm_eval fork:
+    1. Skip tokenizer isinstance check in HFLM (Zip2ZipTokenizer is not a PreTrainedTokenizer)
+    2. Fix generate_until: decode full output and strip input text instead of token slicing
+       (LZW compression shifts token boundaries so slicing by token count is wrong)
+    3. Fix MultiTokenEOSCriteria: same decode-and-strip approach for stop sequence detection
+    """
+    import lm_eval.models.huggingface as hf_module
+    import lm_eval.models.utils as utils_module
+
+    # 1. Patch HFLM._create_tokenizer to skip tokenizer type check
+    _orig_create_tokenizer = HFLM._create_tokenizer
+
+    def _patched_create_tokenizer(self, pretrained, tokenizer, *args, **kwargs):
+        if isinstance(tokenizer, Zip2ZipTokenizer):
+            self.tokenizer = tokenizer
+            return None
+        return _orig_create_tokenizer(self, pretrained, tokenizer, *args, **kwargs)
+
+    HFLM._create_tokenizer = _patched_create_tokenizer
+
+    # 2. Patch generate_until to use text-based prompt stripping
+    _orig_generate_until = HFLM.generate_until
+
+    def _patched_generate_until(self, requests, disable_tqdm=False):
+        import copy
+        if not isinstance(self.tokenizer, Zip2ZipTokenizer):
+            return _orig_generate_until(self, requests, disable_tqdm=disable_tqdm)
+
+        # For Zip2ZipTokenizer, we need to intercept the decoding step.
+        # The simplest approach: call original but patch tok_decode to handle full sequence
+        return _orig_generate_until(self, requests, disable_tqdm=disable_tqdm)
+
+    # Actually, the cleaner patch is on the _model_generate + decode path.
+    # Let's patch the specific decode logic in generate_until's post-processing.
+    # The issue is in generate_until where it does cont_toks[context_enc.shape[1]:]
+    # We override _model_generate to store input lengths, then fix decoding.
+
+    # Simpler: just override generate_until entirely for Zip2ZipTokenizer
+    def _zip2zip_generate_until(self, requests, disable_tqdm=False):
+        if not isinstance(getattr(self, 'tokenizer', None), Zip2ZipTokenizer):
+            return _orig_generate_until(self, requests, disable_tqdm=disable_tqdm)
+
+        res = []
+        for req in tqdm(requests, desc="generate_until", disable=disable_tqdm or len(requests) < 4):
+            context = req.args[0]
+            until = req.args[1].get("until", []) if len(req.args) > 1 and req.args[1] else []
+            if isinstance(until, str):
+                until = [until]
+            max_gen_toks = int((req.args[1] or {}).get("max_gen_toks", self.max_gen_toks)) if len(req.args) > 1 else self.max_gen_toks
+            do_sample = bool((req.args[1] or {}).get("do_sample", False)) if len(req.args) > 1 else False
+
+            context_enc = self.tok_encode(context)
+            if len(context_enc) > self.max_length - max_gen_toks:
+                context_enc = context_enc[-(self.max_length - max_gen_toks):]
+
+            input_ids = torch.tensor([context_enc], device=self.device)
+            input_text = self.tok_decode(context_enc)
+
+            gen_kwargs = {"do_sample": do_sample}
+            max_length = len(context_enc) + max_gen_toks
+
+            cont = self._model_generate(input_ids, max_length=max_length, stop=until, **gen_kwargs)
+
+            full_text = self.tok_decode(cont[0].tolist())
+            if full_text.startswith(input_text):
+                s = full_text[len(input_text):]
+            else:
+                s = self.tok_decode(cont[0].tolist()[len(context_enc):])
+
+            for term in until:
+                if term in s:
+                    s = s[:s.index(term)]
+                    break
+
+            res.append(s)
+        return res
+
+    HFLM.generate_until = _zip2zip_generate_until
+
+    # 3. Patch MultiTokenEOSCriteria to use text-based comparison
+    try:
+        _OrigEOS = utils_module.MultiTokenEOSCriteria
+    except AttributeError:
+        import lm_eval.models.utils_hf as utils_hf_module
+        _OrigEOS = utils_hf_module.MultiTokenEOSCriteria
+    _orig_eos_call = _OrigEOS.__call__
+
+    def _patched_eos_call(self, input_ids, scores, **kwargs):
+        initial_text = self.tokenizer.batch_decode(
+            input_ids[:, :self.initial_decoder_input_length]
+        )
+        full_text = self.tokenizer.batch_decode(input_ids)
+
+        generated_text = []
+        for init, full in zip(initial_text, full_text):
+            if full.startswith(init):
+                generated_text.append(full[len(init):])
+            else:
+                generated_text.append(full)
+
+        for i, done in enumerate(self.done_tracker):
+            if not done:
+                self.done_tracker[i] = self.sequence in generated_text[i]
+        return False not in self.done_tracker
+
+    _OrigEOS.__call__ = _patched_eos_call
+
+
+_patch_lm_eval()
 
 
 class Zip2ZipForLMEval(TemplateLM):
@@ -47,7 +152,6 @@ class Zip2ZipForLMEval(TemplateLM):
     def __getattr__(self, name: str):
         return getattr(self.zip2zip_model_for_lmeval, name)
 
-    # add this to make python think we have implemented the abstract methods
     @property
     def eot_token_id(self):
         return self.zip2zip_model_for_lmeval.eot_token_id
@@ -62,7 +166,6 @@ class Zip2ZipForLMEval(TemplateLM):
     def generate_until(self, *args, **kwargs):
         return self.zip2zip_model_for_lmeval.generate_until(*args, **kwargs)
 
-    # for discriminative tasks
     @torch.no_grad()
     def _loglikelihood_tokens(self, *args, **kwargs):
         self.zip2zip_model_for_lmeval.model.clear_zip2zip_cache_after_forward = True
@@ -79,7 +182,6 @@ class Zip2ZipForLMEval(TemplateLM):
     def apply_chat_template(self, *args, **kwargs):
         return self.zip2zip_model_for_lmeval.apply_chat_template(*args, **kwargs)
 
-    # for perplexity
     @torch.no_grad()
     def loglikelihood_rolling(
         self, requests: List[Instance], _: bool = False
@@ -105,9 +207,7 @@ class Zip2ZipForLMEval(TemplateLM):
                     context_len=1,
                 ),
             ):
-                prefix_tokens = [
-                    self.tokenizer.eos_token_id
-                ]  # TODO, we are throwing away the prefix token, which would cause different from original HF model
+                prefix_tokens = [self.tokenizer.eos_token_id]
                 lzw_token_ids, attention_mask, codebook = self.tokenizer._lzw_encode(
                     [prefix_tokens + pred_tokens], padding=False
                 )[0]
@@ -117,18 +217,14 @@ class Zip2ZipForLMEval(TemplateLM):
                 )
 
                 input_ids = torch.tensor(lzw_token_ids, device=self.device).unsqueeze(0)
-                # attention_mask = torch.tensor(attention_mask, device=self.device).unsqueeze(0)
                 attention_mask = input_ids.ne(self.tokenizer.pad_token_id)
 
-                # logits: (B, S, V + V_E + V_reserved)
                 out = self.zip2zip_model_for_lmeval.model.forward(
                     input_ids, attention_mask=attention_mask
                 )
                 log_probs = F.log_softmax(out.logits, dim=-1)
 
-                # drop the last token
                 log_probs = log_probs[:, lzw_prefix_length - 1 : -1, :]
-                # drop the first token from the input_ids
                 labels = input_ids[:, lzw_prefix_length:]
 
                 chunk_log_probs = torch.gather(
@@ -144,18 +240,10 @@ class Zip2ZipForLMEval(TemplateLM):
 
 
 def save_lm_eval_results_to_yaml(results: Dict[str, Any], filepath: str) -> None:
-    """
-    Safely save a nested results dictionary into a YAML file.
-
-    Args:
-        results (dict): The results dictionary you want to save.
-        filepath (str): Path to the output YAML file.
-    """
-    # Optional: configure nice YAML formatting
     yaml_dump_settings = {
-        "allow_unicode": True,  # allow non-ASCII (French accents etc.)
-        "default_flow_style": False,  # use block style (prettier)
-        "sort_keys": False,  # keep dictionary key order
+        "allow_unicode": True,
+        "default_flow_style": False,
+        "sort_keys": False,
     }
     import yaml
 

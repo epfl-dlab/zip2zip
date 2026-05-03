@@ -1,3 +1,4 @@
+import argparse
 from datetime import datetime
 import os
 import torch
@@ -6,49 +7,56 @@ from zip2zip.tokenizer import Zip2ZipTokenizer
 from zip2zip.tools.harness import Zip2ZipForLMEval, save_lm_eval_results_to_yaml
 from lm_eval.utils import make_table
 
-if __name__ == "__main__":
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("model_path", type=str,
+                        help="HF repo or local path to zip2zip model")
+    parser.add_argument("--tasks", type=str, nargs="+",
+                        default=["wikitext", "piqa", "winogrande", "gsm8k"])
+    parser.add_argument("--max_subtokens", type=int, default=None)
+    parser.add_argument("--max_length", type=int, default=2048)
+    parser.add_argument("--batch_size", type=int, default=1)
+    parser.add_argument("--limit", type=int, default=None)
+    parser.add_argument("--num_fewshot", type=int, default=2)
+    parser.add_argument("--dtype", type=str, default="bfloat16",
+                        choices=["float16", "bfloat16", "float32"])
+    parser.add_argument("--output_dir", type=str, default="eleutherai_eval")
+    args = parser.parse_args()
+
     from lm_eval.evaluator import simple_evaluate
 
-    # model_name = "epfl-dlab/zip2zip-Llama-3.2-3B-Instruct-v0.1"
-    model_name = "epfl-dlab/zip2zip-Phi-3.5-mini-instruct-v0.1"
+    dtype = getattr(torch, args.dtype)
     model = Zip2ZipModel.from_pretrained(
-        model_name, device_map="cuda", torch_dtype=torch.float16, max_subtokens=3
+        args.model_path, torch_dtype=dtype, max_subtokens=args.max_subtokens,
+    ).to("cuda").eval()
+
+    tokenizer = Zip2ZipTokenizer.from_pretrained(
+        args.model_path, max_subtokens=args.max_subtokens,
     )
-    tokenizer = Zip2ZipTokenizer.from_pretrained(model_name, max_subtokens=3)
 
     model = Zip2ZipForLMEval(
-        model,
-        tokenizer,
-        max_length=1024,
-        batch_size=1,
+        model, tokenizer,
+        max_length=args.max_length,
+        batch_size=args.batch_size,
     )
 
-    model.model.eval()
-
-    # disable all parameters in the model
     for param in model.model.parameters():
         param.requires_grad = False
 
     results = simple_evaluate(
         model,
-        # tasks="arc_easy",
-        # ai2_arc,openbookqa,piqa,winogrande,commonsense_qa,lambada,mathqa,hellaswag
-        # tasks=["openbookqa", "piqa", "winogrande", "commonsense_qa", "lambada", "mathqa", "hellaswag"],
-        # tasks=["wmt14-fr-en", "wmt14-en-fr"],
-        tasks=["paloma_mc4", "paloma_dolma_100_programing_languages"],
-        limit=100,
-        num_fewshot=2,
-        apply_chat_template=True,
-        fewshot_as_multiturn=True,
+        tasks=args.tasks,
+        limit=args.limit,
+        num_fewshot=args.num_fewshot,
         confirm_run_unsafe_code=True,
     )
 
     if results is not None:
         print(make_table(results))
 
-    if True:
         current_time = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-        session_dir = os.path.join("eleutherai_eval", current_time)
+        session_dir = os.path.join(args.output_dir, current_time)
         os.makedirs(session_dir, exist_ok=False)
         samples = results["samples"]
         metadata = {k: v for k, v in results.items() if k != "samples"}
@@ -58,9 +66,11 @@ if __name__ == "__main__":
                 results=task_results,
                 filepath=os.path.join(session_dir, f"{task_name}.yaml"),
             )
-
-        # save the metadata
         save_lm_eval_results_to_yaml(
             results=metadata,
-            filepath=os.path.join(session_dir, f"metadata.yaml"),
+            filepath=os.path.join(session_dir, "metadata.yaml"),
         )
+
+
+if __name__ == "__main__":
+    main()
