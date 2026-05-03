@@ -151,7 +151,7 @@ class CodebookManager:
             initial_vocab_size=config.compression.initial_vocab_size,
             max_codebook_size=config.compression.max_codebook_size,
             max_subtokens=config.compression.max_subtokens,
-            embedding_dim=config.encoder.hidden_size,
+            embedding_dim=getattr(config.encoder, "model_hidden_size", None) or config.encoder.hidden_size,
             pad_token_id=pad_token_id,
             disabled_ids=config.compression.disabled_ids,
         )
