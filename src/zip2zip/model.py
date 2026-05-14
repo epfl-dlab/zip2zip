@@ -8,6 +8,7 @@ from torch import nn
 from typing import Tuple, Optional, Union
 from huggingface_hub import hf_hub_download
 from transformers.utils import PushToHubMixin
+from transformers.utils import SAFE_WEIGHTS_NAME
 from safetensors.torch import save_file, load_file
 from transformers.generation.utils import GenerateOutput
 from transformers import PreTrainedModel, AutoModelForCausalLM
@@ -125,20 +126,32 @@ class Zip2ZipModel(PushToHubMixin, nn.Module):
             if key in inspect.signature(hf_hub_download).parameters:
                 hf_hub_download_kwargs[key] = value
 
-        if os.path.isfile(os.path.join(path, SAFETENSORS_ENCODERS_NAME)):
-            encoder_file = os.path.join(path, SAFETENSORS_ENCODERS_NAME)
-        else:
-            try:
-                encoder_file = hf_hub_download(
-                    pretrained_model_name_or_path,
-                    SAFETENSORS_ENCODERS_NAME,
-                    subfolder=subfolder,
-                    **hf_hub_download_kwargs,
-                )
-            except Exception as exc:
-                raise ValueError(
-                    f"Can't find '{SAFETENSORS_ENCODERS_NAME}' at '{pretrained_model_name_or_path}'"
-                ) from exc
+        encoder_filenames = [SAFETENSORS_ENCODERS_NAME, "encoders.safetensors"]
+        encoder_file = None
+
+        for filename in encoder_filenames:
+            local_candidate = os.path.join(path, filename)
+            if os.path.isfile(local_candidate):
+                encoder_file = local_candidate
+                break
+
+        if encoder_file is None:
+            for filename in encoder_filenames:
+                try:
+                    encoder_file = hf_hub_download(
+                        pretrained_model_name_or_path,
+                        filename,
+                        subfolder=subfolder,
+                        **hf_hub_download_kwargs,
+                    )
+                    break
+                except Exception:
+                    continue
+
+        if encoder_file is None:
+            raise ValueError(
+                f"Can't find any encoder file in {encoder_filenames} at '{pretrained_model_name_or_path}'"
+            )
 
         encoders_state_dict = load_file(encoder_file, device=torch_device)
 
@@ -154,6 +167,42 @@ class Zip2ZipModel(PushToHubMixin, nn.Module):
         self.input_encoder.load_state_dict(input_encoder_state_dict)
         if not self.zip2zip_config.encoder.tie_encoders:
             self.output_encoder.load_state_dict(output_encoder_state_dict)
+
+    @staticmethod
+    def _load_pretrained_decoder_weights(
+        base_model: PreTrainedModel,
+        pretrained_model_name_or_path: str,
+        subfolder: Optional[str] = None,
+        torch_device: Optional[str] = None,
+        **kwargs,
+    ) -> bool:
+        path = (
+            os.path.join(pretrained_model_name_or_path, subfolder)
+            if subfolder is not None
+            else pretrained_model_name_or_path
+        )
+
+        hf_hub_download_kwargs = {}
+        for key, value in kwargs.items():
+            if key in inspect.signature(hf_hub_download).parameters:
+                hf_hub_download_kwargs[key] = value
+
+        if os.path.isfile(os.path.join(path, SAFE_WEIGHTS_NAME)):
+            decoder_file = os.path.join(path, SAFE_WEIGHTS_NAME)
+        else:
+            try:
+                decoder_file = hf_hub_download(
+                    pretrained_model_name_or_path,
+                    SAFE_WEIGHTS_NAME,
+                    subfolder=subfolder,
+                    **hf_hub_download_kwargs,
+                )
+            except Exception:
+                return False
+
+        decoder_state_dict = load_file(decoder_file, device=torch_device)
+        base_model.load_state_dict(decoder_state_dict, strict=False)
+        return True
 
     def __getattr__(self, name: str):
         try:
@@ -255,8 +304,19 @@ class Zip2ZipModel(PushToHubMixin, nn.Module):
                 pretrained_model_name_or_path,
                 **kwargs,
             )
-        except (OSError, FileNotFoundError, ValueError) as e:
+        except (OSError, FileNotFoundError, ValueError):
             logger.info("[Zip2Zip] No PEFT adapter found — proceeding with base model.")
+            decoder_loaded = cls._load_pretrained_decoder_weights(
+                base_model,
+                pretrained_model_name_or_path,
+                **kwargs,
+            )
+            if decoder_loaded:
+                logger.info("[Zip2Zip] Loaded decoder weights from model.safetensors.")
+            else:
+                logger.info(
+                    "[Zip2Zip] No decoder weights found — proceeding with base model."
+                )
 
         model = cls(config, base_model, **kwargs)
 
