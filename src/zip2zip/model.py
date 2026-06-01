@@ -201,8 +201,93 @@ class Zip2ZipModel(PushToHubMixin, nn.Module):
                 return False
 
         decoder_state_dict = load_file(decoder_file, device=torch_device)
-        base_model.load_state_dict(decoder_state_dict, strict=False)
+        incompatible = base_model.load_state_dict(decoder_state_dict, strict=False)
+        if incompatible.missing_keys:
+            logger.warning(
+                "[Zip2Zip] Missing decoder keys while loading model.safetensors: %s",
+                incompatible.missing_keys,
+            )
+        if incompatible.unexpected_keys:
+            logger.warning(
+                "[Zip2Zip] Unexpected decoder keys while loading model.safetensors: %s",
+                incompatible.unexpected_keys,
+            )
         return True
+
+    @staticmethod
+    def _load_training_args_metadata(
+        pretrained_model_name_or_path: str,
+        subfolder: Optional[str] = None,
+        **kwargs,
+    ) -> Optional[dict]:
+        path = (
+            os.path.join(pretrained_model_name_or_path, subfolder)
+            if subfolder is not None
+            else pretrained_model_name_or_path
+        )
+
+        hf_hub_download_kwargs = {}
+        for key, value in kwargs.items():
+            if key in inspect.signature(hf_hub_download).parameters:
+                hf_hub_download_kwargs[key] = value
+
+        meta_file = None
+        local_candidate = os.path.join(path, "meta.pt")
+        if os.path.isfile(local_candidate):
+            meta_file = local_candidate
+        else:
+            try:
+                meta_file = hf_hub_download(
+                    pretrained_model_name_or_path,
+                    "meta.pt",
+                    subfolder=subfolder,
+                    **hf_hub_download_kwargs,
+                )
+            except Exception:
+                meta_file = None
+
+        if meta_file is None:
+            return None
+
+        try:
+            meta = torch.load(meta_file, map_location="cpu", weights_only=False)
+            return meta.get("args", {})
+        except Exception:
+            return None
+
+    @staticmethod
+    def _align_encoder_flags_with_training_args(
+        config: Zip2ZipConfig,
+        pretrained_model_name_or_path: str,
+        subfolder: Optional[str] = None,
+        **kwargs,
+    ) -> None:
+        train_args = Zip2ZipModel._load_training_args_metadata(
+            pretrained_model_name_or_path,
+            subfolder=subfolder,
+            **kwargs,
+        )
+        if not train_args:
+            return
+
+        expected_causal = bool(train_args.get("encoder_causal", False))
+        expected_residual = not bool(train_args.get("no_encoder_residual", False))
+
+        if getattr(config.encoder, "causal", None) != expected_causal:
+            logger.warning(
+                "[Zip2Zip] Overriding encoder.causal from %s to %s based on meta.pt train args.",
+                getattr(config.encoder, "causal", None),
+                expected_causal,
+            )
+            config.encoder.causal = expected_causal
+
+        if getattr(config.encoder, "residual", None) != expected_residual:
+            logger.warning(
+                "[Zip2Zip] Overriding encoder.residual from %s to %s based on meta.pt train args.",
+                getattr(config.encoder, "residual", None),
+                expected_residual,
+            )
+            config.encoder.residual = expected_residual
 
     def __getattr__(self, name: str):
         try:
@@ -281,6 +366,11 @@ class Zip2ZipModel(PushToHubMixin, nn.Module):
         **kwargs,
     ) -> Zip2ZipModel:
         config = Zip2ZipConfig.from_pretrained(pretrained_model_name_or_path, **kwargs)
+        cls._align_encoder_flags_with_training_args(
+            config,
+            pretrained_model_name_or_path,
+            **kwargs,
+        )
         config.compression.max_codebook_size = (
             max_codebook_size
             if max_codebook_size is not None
