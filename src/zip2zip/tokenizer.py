@@ -31,8 +31,10 @@ class Zip2ZipTokenizer(PushToHubMixin):
         self.max_subtokens = self.compression_config.max_subtokens
         self.disabled_ids = self.compression_config.disabled_ids
 
-        self.old_batch_encode_plus = tokenizer._batch_encode_plus
-        tokenizer._batch_encode_plus = self._batch_encode_plus
+        self.hf_tokenizer = tokenizer
+        self.old_batch_encode_plus = getattr(tokenizer, "_batch_encode_plus", None)
+        if self.old_batch_encode_plus is not None:
+            tokenizer._batch_encode_plus = self._batch_encode_plus
 
         self.old_decode = tokenizer._decode
         tokenizer._decode = self._decode
@@ -51,7 +53,44 @@ class Zip2ZipTokenizer(PushToHubMixin):
         return getattr(self.tokenizer, attr)
 
     def __call__(self, *args, **kwargs) -> BatchEncoding:
-        return self.tokenizer(*args, **kwargs)
+        if self.old_batch_encode_plus is not None:
+            return self.tokenizer(*args, **kwargs)
+
+        return_tensors = kwargs.pop("return_tensors", None)
+        padding = kwargs.pop("padding", False)
+        truncation = kwargs.pop("truncation", False)
+        max_length = kwargs.pop("max_length", None)
+        return_codebook = kwargs.pop("return_codebook", False)
+
+        encoding = self.hf_tokenizer(
+            *args,
+            return_tensors=None,
+            padding=padding,
+            truncation=truncation,
+            max_length=max_length,
+            **kwargs,
+        )
+
+        padding_mode = padding if padding else "do_not_pad"
+        truncation_mode = bool(truncation)
+        (
+            encoding["input_ids"],
+            encoding["attention_mask"],
+            codebooks,
+        ) = self.compressor.batch_encode(
+            encoding["input_ids"],
+            padding=padding_mode,
+            truncation=truncation_mode,
+            max_length=max_length,
+        )
+
+        if return_tensors:
+            encoding = encoding.convert_to_tensors(return_tensors)
+
+        if return_codebook:
+            encoding["codebooks"] = codebooks
+
+        return encoding
 
     def _lzw_encode(
         self, *args, **kwargs
