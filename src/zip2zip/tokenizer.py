@@ -26,7 +26,16 @@ class Zip2ZipTokenizer(PushToHubMixin):
         set_pad_token_if_none(tokenizer)
 
         self.compression_config = config.compression
-        self.initial_vocab_size = get_base_vocab_size(tokenizer)
+        # Use the config's initial_vocab_size (the value the MODEL was trained with)
+        # as the base/hyper boundary. Falling back to len(tokenizer.vocab) breaks
+        # when the model's vocab_size != len(tokenizer) — e.g. Phi-3.5-mini, whose
+        # config vocab is 32064 but the tokenizer has only 32011 tokens. A mismatch
+        # offsets every hyper token and corrupts generation.
+        self.initial_vocab_size = (
+            self.compression_config.initial_vocab_size
+            if getattr(self.compression_config, "initial_vocab_size", None) is not None
+            else get_base_vocab_size(tokenizer)
+        )
         self.max_codebook_size = self.compression_config.max_codebook_size
         self.max_subtokens = self.compression_config.max_subtokens
         self.disabled_ids = self.compression_config.disabled_ids
