@@ -207,7 +207,6 @@ class Zip2ZipForLMEval(TemplateLM):
                     context_len=1,
                 ),
             ):
-                prefix_tokens = [self.tokenizer.eos_token_id]
                 lzw_token_ids, attention_mask, codebook = self.tokenizer._lzw_encode(
                     [prefix_tokens + pred_tokens], padding=False
                 )[0]
