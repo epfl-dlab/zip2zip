@@ -86,12 +86,23 @@ def _patch_lm_eval():
             max_length = len(context_enc) + max_gen_toks
 
             cont = self._model_generate(input_ids, max_length=max_length, stop=until, **gen_kwargs)
+            gen_ids = cont[0].tolist()
 
-            full_text = self.tok_decode(cont[0].tolist())
+            stats = getattr(self, "_z2z_compression_stats", None)
+            if stats is not None:
+                # Count at emission time: every token the model actually generated,
+                # including any past a stop sequence. LZW decoding is prefix-consistent,
+                # so full-vs-context decoded lengths give the exact base-token count.
+                stats["gen_comp"] += len(gen_ids) - len(context_enc)
+                ctx_base = len(self.tokenizer._lzw_decode([context_enc])[0][0])
+                full_base = len(self.tokenizer._lzw_decode([gen_ids])[0][0])
+                stats["gen_base"] += full_base - ctx_base
+
+            full_text = self.tok_decode(gen_ids)
             if full_text.startswith(input_text):
                 s = full_text[len(input_text):]
             else:
-                s = self.tok_decode(cont[0].tolist()[len(context_enc):])
+                s = self.tok_decode(gen_ids[len(context_enc):])
 
             for term in until:
                 if term in s:
@@ -148,6 +159,22 @@ class Zip2ZipForLMEval(TemplateLM):
         self._original_tokenizer = AutoTokenizer.from_pretrained(
             zip2zip_model.zip2zip_config.base_model_name_or_path
         )
+        # generate_until is monkey-patched onto HFLM (see _zip2zip_generate_until),
+        # so the patch can only reach state through the HFLM instance: share one
+        # counters dict between the wrapper and the inner HFLM.
+        self.compression_stats = {"in_base": 0, "in_comp": 0, "gen_base": 0, "gen_comp": 0}
+        self.zip2zip_model_for_lmeval._z2z_compression_stats = self.compression_stats
+
+    def compression_summary(self) -> Dict[str, Any]:
+        """Raw counters plus derived ratios (base tokens per compressed token,
+        > 1 = more compression; same keys as zip2zip-core's Zip2ZipLM).
+        """
+        s = dict(self.compression_stats)
+        if s["in_comp"]:
+            s["input_compression_ratio"] = s["in_base"] / s["in_comp"]
+        if s["gen_comp"]:
+            s["gen_compression_ratio"] = s["gen_base"] / s["gen_comp"]
+        return s
 
     def __getattr__(self, name: str):
         return getattr(self.zip2zip_model_for_lmeval, name)
@@ -167,9 +194,19 @@ class Zip2ZipForLMEval(TemplateLM):
         return self.zip2zip_model_for_lmeval.generate_until(*args, **kwargs)
 
     @torch.no_grad()
-    def _loglikelihood_tokens(self, *args, **kwargs):
+    def _loglikelihood_tokens(self, requests, *args, **kwargs):
+        # requests: ((context, continuation), context_enc, continuation_enc) with
+        # context_enc + continuation_enc == the LZW-compressed encoding of the
+        # full text (see TemplateLM._encode_pair); the strings give base counts.
+        for (context, continuation), context_enc, continuation_enc in requests:
+            self.compression_stats["in_comp"] += len(context_enc) + len(continuation_enc)
+            self.compression_stats["in_base"] += len(
+                self._original_tokenizer.encode(
+                    context + continuation, add_special_tokens=False
+                )
+            )
         self.zip2zip_model_for_lmeval.model.clear_zip2zip_cache_after_forward = True
-        return self.zip2zip_model_for_lmeval._loglikelihood_tokens(*args, **kwargs)
+        return self.zip2zip_model_for_lmeval._loglikelihood_tokens(requests, *args, **kwargs)
 
     @property
     def tokenizer_name(self):
@@ -214,6 +251,9 @@ class Zip2ZipForLMEval(TemplateLM):
                 lzw_prefix_length = len(
                     self.tokenizer._lzw_encode([prefix_tokens], padding=False)[0][0]
                 )
+
+                self.compression_stats["in_base"] += len(prefix_tokens) + len(pred_tokens)
+                self.compression_stats["in_comp"] += len(lzw_token_ids)
 
                 input_ids = torch.tensor(lzw_token_ids, device=self.device).unsqueeze(0)
                 attention_mask = input_ids.ne(self.tokenizer.pad_token_id)
