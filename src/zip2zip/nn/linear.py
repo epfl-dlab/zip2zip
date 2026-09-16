@@ -37,6 +37,14 @@ class HyperLinear(nn.Linear):
 
         hyper_logits = torch.bmm(x, hyper_linear_weights.transpose(-2, -1))
 
+        installed = self.codebook_manager.installed_slots
+        if installed is not None:
+            # Match the training model: entries that do not exist yet score -inf
+            # instead of the 0 their empty weight rows would give.
+            hyper_logits = hyper_logits.masked_fill(
+                ~installed.to(hyper_logits.device).unsqueeze(1), float("-inf")
+            )
+
         return torch.cat(
             [
                 base_logits[..., : self.initial_vocab_size],
