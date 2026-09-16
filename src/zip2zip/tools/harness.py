@@ -156,8 +156,12 @@ class Zip2ZipForLMEval(TemplateLM):
         self.zip2zip_model_for_lmeval = HFLM(
             pretrained=zip2zip_model, tokenizer=zip2zip_tokenizer, **model_kwargs
         )
+        # A second, unpatched copy of the base tokenizer (the one inside
+        # zip2zip_tokenizer compresses on encode). Fetch it with the same hub
+        # arguments so a self-contained release resolves to the right revision.
         self._original_tokenizer = AutoTokenizer.from_pretrained(
-            zip2zip_model.zip2zip_config.base_model_name_or_path
+            zip2zip_model.zip2zip_config.base_model_name_or_path,
+            **getattr(zip2zip_tokenizer, "tokenizer_kwargs", {}),
         )
         # generate_until is monkey-patched onto HFLM (see _zip2zip_generate_until),
         # so the patch can only reach state through the HFLM instance: share one

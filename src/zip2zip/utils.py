@@ -483,3 +483,23 @@ def save_lm_eval_results_to_yaml(results: Dict[str, Any], filepath: str) -> None
         print(f"Successfully saved results to {filepath}")
     except Exception as e:
         print(f"Error saving YAML: {e}")
+
+
+def hub_kwargs(kwargs: Dict[str, Any], **explicit: Any) -> Dict[str, Any]:
+    """Keep only the arguments ``hf_hub_download`` understands.
+
+    ``revision``, ``subfolder``, ``token``, ``cache_dir`` and friends select
+    *which* files to fetch; model-loading arguments such as ``device_map`` or
+    ``dtype`` must never reach ``AutoTokenizer``. ``explicit`` values override
+    ``kwargs`` and are dropped when ``None``.
+    """
+    import inspect
+
+    from huggingface_hub import hf_hub_download
+
+    allowed = inspect.signature(hf_hub_download).parameters
+    selected = {key: value for key, value in kwargs.items() if key in allowed}
+    selected.update(
+        {key: value for key, value in explicit.items() if value is not None}
+    )
+    return selected

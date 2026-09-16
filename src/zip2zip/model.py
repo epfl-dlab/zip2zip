@@ -17,6 +17,7 @@ from peft import PeftModel, PeftMixedModel, PeftConfig, get_peft_model
 from accelerate import init_empty_weights, load_checkpoint_and_dispatch
 
 from zip2zip.config import Zip2ZipConfig
+from zip2zip.utils import hub_kwargs
 from zip2zip.nn.linear import HyperLinear
 from zip2zip.codebook import CodebookManager
 from zip2zip.nn.embedding import HyperEmbedding
@@ -34,6 +35,7 @@ class Zip2ZipModel(PushToHubMixin, nn.Module):
         config: Zip2ZipConfig[EncoderConfigType],
         base_model: Optional[PreTrainedModel] = None,
         peft_config: Optional[PeftConfig] = None,
+        tokenizer_kwargs: Optional[dict] = None,
         **kwargs,
     ) -> None:
         super().__init__()
@@ -52,7 +54,11 @@ class Zip2ZipModel(PushToHubMixin, nn.Module):
         # in case of embedding model(as opposed to generation model), we need to clear the cache after forward, otherwise the cache will cumulate
         self.clear_zip2zip_cache_after_forward = False
 
-        self.codebook_manager = CodebookManager.from_config(config)
+        # Pass hub arguments only when there are any, so callers that supply a
+        # plain from_config(config) (older wrappers, test fakes) keep working.
+        self.codebook_manager = CodebookManager.from_config(
+            config, **({"tokenizer_kwargs": tokenizer_kwargs} if tokenizer_kwargs else {})
+        )
         self.input_encoder, self.output_encoder = self.build_encoders()
         self.set_hyper_modules()
         self._install_base_position_generation_hook()
@@ -424,11 +430,16 @@ class Zip2ZipModel(PushToHubMixin, nn.Module):
     ) -> Zip2ZipModel:
         config = Zip2ZipConfig.from_pretrained(pretrained_model_name_or_path, **kwargs)
         self_contained = config.base_model_name_or_path == "."
+        tokenizer_kwargs = {}
         if self_contained:
             # A v2 release keeps config.json, tokenizer files, decoder shards,
             # and zip2zip weights in one repository. Resolve the portable "."
-            # marker against the source selected by the caller.
+            # marker against the source selected by the caller, and select the
+            # tokenizer with the same hub arguments (revision, subfolder, token,
+            # ...) as the config. An external base model keeps its own default
+            # revision.
             config.base_model_name_or_path = pretrained_model_name_or_path
+            tokenizer_kwargs = hub_kwargs(kwargs)
         cls._align_encoder_flags_with_training_args(
             config,
             pretrained_model_name_or_path,
@@ -473,7 +484,7 @@ class Zip2ZipModel(PushToHubMixin, nn.Module):
                         "[Zip2Zip] No decoder weights found — proceeding with base model."
                     )
 
-        model = cls(config, base_model, **kwargs)
+        model = cls(config, base_model, tokenizer_kwargs=tokenizer_kwargs, **kwargs)
 
         try:
             model.load_pretrained_hyper_encoders(

@@ -225,8 +225,11 @@ class CodebookManager:
     def from_config(
         cls,
         config: Zip2ZipConfig,
+        tokenizer_kwargs: Optional[dict] = None,
     ) -> CodebookManager:
-        tokenizer = AutoTokenizer.from_pretrained(config.base_model_name_or_path)
+        tokenizer = AutoTokenizer.from_pretrained(
+            config.base_model_name_or_path, **(tokenizer_kwargs or {})
+        )
         pad_token_id = (
             tokenizer.pad_token_id
             if tokenizer.pad_token_id is not None
