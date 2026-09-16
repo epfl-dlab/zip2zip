@@ -8,7 +8,7 @@ from transformers.utils import PushToHubMixin
 from transformers import PreTrainedTokenizerBase, AutoTokenizer, BatchEncoding
 from zip2zip_compression import Codebook
 from zip2zip.config import Zip2ZipConfig
-from zip2zip.utils import get_base_vocab_size
+from zip2zip.utils import get_base_vocab_size, hub_kwargs
 from zip2zip_compression import LZWCompressor
 from zip2zip.visual import ColoredToken, colorise_lzwtokens, ColorfulTokenizer
 
@@ -18,10 +18,17 @@ class Zip2ZipTokenizer(PushToHubMixin):
         self,
         config: Zip2ZipConfig,
         tokenizer: Optional[PreTrainedTokenizerBase] = None,
+        tokenizer_kwargs: Optional[dict] = None,
     ) -> None:
         self.zip2zip_config = config
+        # Hub arguments (revision, subfolder, token, ...) that locate the base
+        # tokenizer; kept so callers needing a second, unpatched copy of it
+        # (see tools/harness.py) fetch the same files.
+        self.tokenizer_kwargs = dict(tokenizer_kwargs or {})
         if tokenizer is None:
-            tokenizer = AutoTokenizer.from_pretrained(config.base_model_name_or_path)
+            tokenizer = AutoTokenizer.from_pretrained(
+                config.base_model_name_or_path, **self.tokenizer_kwargs
+            )
 
         set_pad_token_if_none(tokenizer)
 
@@ -187,8 +194,14 @@ class Zip2ZipTokenizer(PushToHubMixin):
             subfolder=subfolder,
             **kwargs,
         )
+        tokenizer_kwargs = {}
         if config.base_model_name_or_path == ".":
+            # Self-contained release: the tokenizer lives in this repository, so
+            # the hub arguments that selected the config (revision, subfolder,
+            # token, ...) must select the tokenizer too. An external base model
+            # keeps its own default revision.
             config.base_model_name_or_path = pretrained_model_name_or_path
+            tokenizer_kwargs = hub_kwargs(kwargs, subfolder=subfolder)
 
         config.compression.max_codebook_size = (
             max_codebook_size
@@ -201,7 +214,7 @@ class Zip2ZipTokenizer(PushToHubMixin):
             else config.compression.max_subtokens
         )
 
-        return cls(config)
+        return cls(config, tokenizer_kwargs=tokenizer_kwargs)
 
     def color_decode(
         self,
