@@ -4,6 +4,7 @@ import os
 import torch
 import inspect
 import logging
+from types import MethodType
 from torch import nn
 from typing import Tuple, Optional, Union
 from huggingface_hub import hf_hub_download
@@ -54,6 +55,39 @@ class Zip2ZipModel(PushToHubMixin, nn.Module):
         self.codebook_manager = CodebookManager.from_config(config)
         self.input_encoder, self.output_encoder = self.build_encoders()
         self.set_hyper_modules()
+        self._install_base_position_generation_hook()
+
+    @property
+    def uses_base_token_positions(self) -> bool:
+        return self.zip2zip_config.position_mode == "base_token_end"
+
+    def _install_base_position_generation_hook(self) -> None:
+        """Make HF GenerationMixin pass semantic positions on every decode step."""
+        if not self.uses_base_token_positions:
+            return
+
+        original_prepare = self.base_model.prepare_inputs_for_generation
+        manager = self.codebook_manager
+
+        def prepare_inputs_for_generation(base_model, *args, **kwargs):
+            model_inputs = original_prepare(*args, **kwargs)
+            input_ids = model_inputs.get("input_ids")
+            if input_ids is None:
+                raise ValueError(
+                    "zip2zip++ generation requires input_ids; inputs_embeds-only "
+                    "generation cannot reconstruct hypertoken spans"
+                )
+            attention_mask = model_inputs.get("attention_mask")
+            if attention_mask is not None:
+                attention_mask = attention_mask[:, -input_ids.shape[1] :]
+            model_inputs["position_ids"] = manager.prepare_input_ids(
+                input_ids, attention_mask=attention_mask
+            )
+            return model_inputs
+
+        self.base_model.prepare_inputs_for_generation = MethodType(
+            prepare_inputs_for_generation, self.base_model
+        )
 
     def set_hyper_modules(self) -> None:
         model_input_embeddings = self.base_model.get_input_embeddings()
@@ -153,7 +187,7 @@ class Zip2ZipModel(PushToHubMixin, nn.Module):
                 f"Can't find any encoder file in {encoder_filenames} at '{pretrained_model_name_or_path}'"
             )
 
-        encoders_state_dict = load_file(encoder_file, device=torch_device)
+        encoders_state_dict = load_file(encoder_file, device=torch_device or "cpu")
 
         input_encoder_state_dict = {}
         output_encoder_state_dict = {}
@@ -308,6 +342,22 @@ class Zip2ZipModel(PushToHubMixin, nn.Module):
                 self.zip2zip_config.compression.max_codebook_size
             )
 
+        if self.uses_base_token_positions and kwargs.get("position_ids") is None:
+            input_ids = kwargs.get("input_ids")
+            if input_ids is None and args:
+                input_ids = args[0]
+            if input_ids is None:
+                raise ValueError(
+                    "zip2zip++ forward requires input_ids when position_ids are "
+                    "not supplied"
+                )
+            attention_mask = kwargs.get("attention_mask")
+            if attention_mask is not None:
+                attention_mask = attention_mask[:, -input_ids.shape[1] :]
+            kwargs["position_ids"] = self.codebook_manager.prepare_input_ids(
+                input_ids, attention_mask=attention_mask
+            )
+
         output = self.base_model.forward(*args, **kwargs)
 
         if is_training:
@@ -319,15 +369,22 @@ class Zip2ZipModel(PushToHubMixin, nn.Module):
         return output
 
     def generate(self, *args, **kwargs) -> Union[GenerateOutput, torch.LongTensor]:
+        if self.uses_base_token_positions and kwargs.get("num_beams", 1) != 1:
+            raise NotImplementedError(
+                "zip2zip++ currently supports sampling and greedy generation, "
+                "but not beam search because beam reordering must also reorder "
+                "the adaptive codebook state"
+            )
         input_ids = kwargs["input_ids"]
         batch_size = input_ids.shape[0]
         # TODO, we don't need to reset this incase of multi-turn generation
+        self.codebook_manager.reset()
         self.codebook_manager.init_codebooks_and_hyper_weight_cache(batch_size)
 
-        output = self.base_model.generate(*args, **kwargs)
-
-        self.codebook_manager.reset()
-        return output
+        try:
+            return self.base_model.generate(*args, **kwargs)
+        finally:
+            self.codebook_manager.reset()
 
     def save_pretrained(
         self, save_directory: str, is_main_process: bool = True, **kwargs
@@ -366,6 +423,12 @@ class Zip2ZipModel(PushToHubMixin, nn.Module):
         **kwargs,
     ) -> Zip2ZipModel:
         config = Zip2ZipConfig.from_pretrained(pretrained_model_name_or_path, **kwargs)
+        self_contained = config.base_model_name_or_path == "."
+        if self_contained:
+            # A v2 release keeps config.json, tokenizer files, decoder shards,
+            # and zip2zip weights in one repository. Resolve the portable "."
+            # marker against the source selected by the caller.
+            config.base_model_name_or_path = pretrained_model_name_or_path
         cls._align_encoder_flags_with_training_args(
             config,
             pretrained_model_name_or_path,
@@ -387,26 +450,28 @@ class Zip2ZipModel(PushToHubMixin, nn.Module):
                 config.base_model_name_or_path, **kwargs
             )
 
-        # try to load the peft model
-        try:
-            base_model = PeftModel.from_pretrained(
-                base_model,
-                pretrained_model_name_or_path,
-                **kwargs,
-            )
-        except (OSError, FileNotFoundError, ValueError):
-            logger.info("[Zip2Zip] No PEFT adapter found — proceeding with base model.")
-            decoder_loaded = cls._load_pretrained_decoder_weights(
-                base_model,
-                pretrained_model_name_or_path,
-                **kwargs,
-            )
-            if decoder_loaded:
-                logger.info("[Zip2Zip] Loaded decoder weights from model.safetensors.")
-            else:
-                logger.info(
-                    "[Zip2Zip] No decoder weights found — proceeding with base model."
+        if not self_contained:
+            # Legacy repositories may contain a PEFT adapter or a single-file
+            # decoder override on top of an external base model.
+            try:
+                base_model = PeftModel.from_pretrained(
+                    base_model,
+                    pretrained_model_name_or_path,
+                    **kwargs,
                 )
+            except (OSError, FileNotFoundError, ValueError):
+                logger.info("[Zip2Zip] No PEFT adapter found — proceeding with base model.")
+                decoder_loaded = cls._load_pretrained_decoder_weights(
+                    base_model,
+                    pretrained_model_name_or_path,
+                    **kwargs,
+                )
+                if decoder_loaded:
+                    logger.info("[Zip2Zip] Loaded decoder weights from model.safetensors.")
+                else:
+                    logger.info(
+                        "[Zip2Zip] No decoder weights found — proceeding with base model."
+                    )
 
         model = cls(config, base_model, **kwargs)
 
@@ -414,7 +479,9 @@ class Zip2ZipModel(PushToHubMixin, nn.Module):
             model.load_pretrained_hyper_encoders(
                 pretrained_model_name_or_path, **kwargs
             )
-        except Exception as e:
+        except Exception:
+            if config.format_version >= 2:
+                raise
             logger.info(
                 "[Zip2Zip] No hyper encoders found — proceeding with base model."
             )

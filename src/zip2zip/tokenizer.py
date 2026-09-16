@@ -187,6 +187,8 @@ class Zip2ZipTokenizer(PushToHubMixin):
             subfolder=subfolder,
             **kwargs,
         )
+        if config.base_model_name_or_path == ".":
+            config.base_model_name_or_path = pretrained_model_name_or_path
 
         config.compression.max_codebook_size = (
             max_codebook_size
