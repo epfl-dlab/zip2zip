@@ -72,8 +72,20 @@ class CompressionConfig:
 
 @dataclass
 class Zip2ZipConfig(PushToHubMixin, Generic[EncoderConfigType]):
+    format_version: int = field(
+        default=1, metadata={"help": "Version of the zip2zip checkpoint format."}
+    )
     base_model_name_or_path: Optional[str] = field(
         default=None, metadata={"help": "The name of the base model to use."}
+    )
+    position_mode: str = field(
+        default="compressed",
+        metadata={
+            "help": (
+                "RoPE position convention: 'compressed' for legacy models or "
+                "'base_token_end' for zip2zip++ models."
+            )
+        },
     )
     encoder_type: EncoderType = field(
         default=None, metadata={"help": "The type of encoder to use."}
@@ -85,6 +97,13 @@ class Zip2ZipConfig(PushToHubMixin, Generic[EncoderConfigType]):
     compression: CompressionConfig = field(
         default=None, metadata={"help": "The compression configuration."}
     )
+
+    def __post_init__(self) -> None:
+        if self.position_mode not in {"compressed", "base_token_end"}:
+            raise ValueError(
+                "position_mode must be 'compressed' or 'base_token_end', got "
+                f"{self.position_mode!r}"
+            )
 
     def to_dict(self) -> Dict:
         return asdict(self)
