@@ -207,6 +207,18 @@ class CodebookManager:
 
         return self.hyper_linear_weight_cache
 
+    @property
+    def installed_slots(self) -> Optional[torch.Tensor]:
+        """(batch, max_codebook_size) bool mask of codebook entries created so far.
+
+        Entries the compressor has not created yet have all-zero rows in the
+        weight caches. The output head masks their logits to -inf, as the
+        training model does, so an entry can never be predicted before it exists.
+        """
+        if self.hyper_token_spans is None:
+            return None
+        return self.hyper_token_spans > 0
+
     def reset(self) -> None:
         self.updates = None
         self.updates_indices = None

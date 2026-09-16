@@ -123,3 +123,32 @@ def test_model_forwards_hub_kwargs_to_the_codebook_tokenizer(tmp_path, monkeypat
     assert captured["tokenizer_kwargs"] == {"revision": "hf"}
     assert model.zip2zip_config.base_model_name_or_path == str(tmp_path)
 
+
+def test_uninstalled_codebook_slots_score_minus_inf(monkeypatch):
+    config = Zip2ZipConfig(
+        format_version=2,
+        base_model_name_or_path="unused",
+        position_mode="base_token_end",
+        encoder_type="res_latent_attn",
+        encoder=ResLatentAttnConfig(**ENCODER),
+        compression=CompressionConfig(**COMPRESSION),
+    )
+    monkeypatch.setattr(
+        CodebookManager,
+        "from_config",
+        classmethod(lambda cls, config, tokenizer_kwargs=None: _manager()),
+    )
+    model = Zip2ZipModel(config, base_model=_tiny_base()).eval()
+
+    with torch.no_grad():
+        logits = model(
+            input_ids=torch.tensor([[1, 2, 1, 2, 10]]),
+            attention_mask=torch.ones(1, 5, dtype=torch.long),
+        ).logits
+
+    installed = model.codebook_manager.installed_slots[0]
+    hyper_logits = logits[0, -1, 10:30]  # ids 10..29 are codebook entries 0..19
+    assert installed.any() and (~installed).any()
+    assert torch.isfinite(hyper_logits[installed]).all()
+    assert torch.isneginf(hyper_logits[~installed]).all()
+    assert torch.isfinite(logits[0, -1, :10]).all()
